@@ -5,28 +5,44 @@ const chatMessages=document.getElementById('chatMessages');
 const chatInput=document.getElementById('chatInput');
 const chatForm=document.getElementById('chatForm');
 let partner={name:'Maya',role:'Fake Girlfriend',vibe:'Playful & flirty'};
+let history=[];
 const replies={
 'Playful & flirty':['Tell me more 👀','Okay, that made me smile.','You know I was waiting for you, right? 😌','Come on, tell me what happened today.'],
 'Calm & caring':['I’m listening. Take your time.','That sounds like a lot. How are you feeling about it?','You don’t have to figure everything out at once.','I’m glad you told me.'],
 'Funny & chaotic':['Okay 😂 that was not on my bingo card.','I have questions. Many questions.','Honestly? I respect the chaos.','Wait… we need to talk about this 😂'],
 'Motivating & supportive':['You’ve got this. One step at a time.','I believe you can handle it.','What is one small thing you can finish today?','Proud of you for keeping going.']
 };
-function addMessage(text,type='received'){
+function addMessage(text,type='received',save=true){
  const el=document.createElement('div');el.className='chat-bubble '+type;el.textContent=text;chatMessages.appendChild(el);chatMessages.scrollTop=chatMessages.scrollHeight;
+ if(save)history.push({role:type==='sent'?'user':'assistant',content:text});
 }
 function startChat(){
  document.querySelector('main').hidden=true;document.querySelector('footer').hidden=true;document.querySelector('.nav').hidden=true;chatApp.hidden=false;
  document.getElementById('chatName').textContent=partner.name;document.getElementById('chatType').textContent=partner.role+' · AI';document.getElementById('chatAvatar').textContent=partner.name.charAt(0).toUpperCase();
- chatMessages.innerHTML='';addMessage('Hey! '+partner.name+' is here. 👋');setTimeout(()=>addMessage('So… how was your day?'),500);chatInput.focus();
+ history=[];chatMessages.innerHTML='';addMessage('Hey! I’m '+partner.name+'. 👋');setTimeout(()=>addMessage('I’m your '+partner.role.toLowerCase()+'. How was your day?'),450);chatInput.focus();
 }
 function leaveChat(){chatApp.hidden=true;document.querySelector('main').hidden=false;document.querySelector('footer').hidden=false;document.querySelector('.nav').hidden=false;}
-function aiReply(text){
+function localReply(text){
  const lower=text.toLowerCase();let reply;
- if(/hello|hi|hey|namaste/.test(lower))reply='Hey! 😊 I was hoping you would message.';
- else if(/sad|bad|upset|stress|tired/.test(lower))reply='I’m here. Want to tell me what’s bothering you?';
- else if(/love|miss/.test(lower))reply='That’s sweet. I’m enjoying this conversation too 💕';
+ if(/^(hi|hello|hey|namaste|hii)/.test(lower))reply='Hey! 😊 I was hoping you would message.';
+ else if(/sad|bad|upset|stress|tired|lonely/.test(lower))reply='I’m here with you. Want to tell me what’s been going on?';
+ else if(/love|miss|cute|beautiful|handsome/.test(lower))reply='That’s sweet. I’m really enjoying our conversation too 💕';
+ else if(/who are you|what are you/.test(lower))reply='I’m '+partner.name+' — the '+partner.role.toLowerCase()+' you created. I’m an AI companion, and I’ll always be clear about that.';
  else {const list=replies[partner.vibe]||replies['Playful & flirty'];reply=list[Math.floor(Math.random()*list.length)];}
- setTimeout(()=>addMessage(reply),650);
+ return reply;
+}
+async function getAIReply(text){
+ // Optional backend endpoint: set /api/chat on your deployed app later.
+ try{
+  const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,partner,history})});
+  if(res.ok){const data=await res.json();if(data.reply)return data.reply;}
+ }catch(e){}
+ return localReply(text);
+}
+async function sendMessage(text){
+ addMessage(text,'sent');chatInput.value='';
+ const typing=document.createElement('div');typing.className='chat-bubble received typing';typing.textContent=partner.name+' is typing…';chatMessages.appendChild(typing);chatMessages.scrollTop=chatMessages.scrollHeight;
+ const reply=await getAIReply(text);typing.remove();addMessage(reply);
 }
 document.querySelectorAll('[data-open]').forEach(btn=>btn.addEventListener('click',()=>btn.dataset.open==='create'?createModal.showModal():mysteryModal.showModal()));
 document.querySelectorAll('[data-close]').forEach(btn=>btn.addEventListener('click',()=>btn.dataset.close==='create'?createModal.close():mysteryModal.close()));
@@ -36,7 +52,7 @@ document.getElementById('startDemo').addEventListener('click',()=>{
  partner={name:document.getElementById('partnerName').value.trim()||(isGirl?'Maya':'Arjun'),role:isGirl?'Fake Girlfriend':'Fake Boyfriend',vibe:document.getElementById('partnerVibe').value};
  createModal.close();startChat();
 });
-chatForm.addEventListener('submit',e=>{e.preventDefault();const text=chatInput.value.trim();if(!text)return;addMessage(text,'sent');chatInput.value='';aiReply(text);});
+chatForm.addEventListener('submit',e=>{e.preventDefault();const text=chatInput.value.trim();if(text)sendMessage(text);});
 document.getElementById('backHome').addEventListener('click',leaveChat);
 document.getElementById('mysteryBtn').addEventListener('click',()=>mysteryModal.showModal());
 document.getElementById('tryDemo').addEventListener('click',()=>{mysteryModal.close();createModal.showModal();});
