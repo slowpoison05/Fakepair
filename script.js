@@ -27,18 +27,27 @@ function localReply(text){
  if(/^(hi|hello|hey|namaste|hii)/.test(lower))reply='Hey! 😊 I was hoping you would message.';
  else if(/sad|bad|upset|stress|tired|lonely/.test(lower))reply='I’m here with you. Want to tell me what’s been going on?';
  else if(/love|miss|cute|beautiful|handsome/.test(lower))reply='That’s sweet. I’m really enjoying our conversation too 💕';
- else if(/who are you|what are you/.test(lower))reply='I’m '+partner.name+' — the '+partner.role.toLowerCase()+' you created. I’m an AI companion, and I’ll always be clear about that.';
+ else if(/who are you|what are you|are you ai|are you an ai|are you artificial intelligence/.test(lower))reply='I’m '+partner.name+' — the '+partner.role.toLowerCase()+' you created. I’m an AI companion, and I’ll always be clear about that.';
  else {const list=replies[partner.vibe]||replies['Playful & flirty'];reply=list[Math.floor(Math.random()*list.length)];}
  return reply;
 }
 async function getAIReply(text){
- // Optional backend endpoint: set /api/chat on your deployed app later.
  try{
   const endpoint=location.hostname.endsWith('.vercel.app')?'/api/chat':'api/chat.php';
   const res=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,partner,history})});
-  if(res.ok){const data=await res.json();if(data.reply)return data.reply;}
- }catch(e){}
- return localReply(text);
+  const data=await res.json().catch(()=>({}));
+  if(res.ok && data.reply)return data.reply;
+
+  console.error('FakePair AI request failed:',res.status,data);
+
+  // Only use local replies when the AI backend is unavailable.
+  // Show a useful diagnostic instead of silently making it look like AI replied.
+  const detail=data.details||data.error||('HTTP '+res.status);
+  return 'AI connection issue: '+detail;
+ }catch(e){
+  console.error('FakePair AI network error:',e);
+  return 'AI connection issue: '+(e?.message||'Unable to reach the AI server.');
+ }
 }
 async function sendMessage(text){
  addMessage(text,'sent');chatInput.value='';
