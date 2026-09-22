@@ -23,7 +23,9 @@ const db = getDatabase(app);
 let uid = null;
 let queueRef = null;
 let queueListener = null;
+let ownQueueListener = null;
 let messagesListener = null;
+let revealListener = null;
 let activeMatchId = null;
 let activePartnerRole = null;
 let leaving = false;
@@ -59,9 +61,6 @@ async function publishQueue(partnerRole) {
 }
 
 async function tryClaim(candidateId, partnerRole, opts) {
-  // Deterministic tie-breaker: only the lexicographically smaller UID
-  // may initiate a match. The candidate is also atomically marked matched,
-  // so only one opponent can ever claim that queue entry.
   if (uid >= candidateId) return false;
 
   const candidateRef = ref(db, "mysteryQueue/" + candidateId);
@@ -84,7 +83,6 @@ async function tryClaim(candidateId, partnerRole, opts) {
   const candidate = tx.snapshot.val();
   if (!candidate || candidate.matchId !== matchId) return false;
 
-  // One unique match record per pair.
   await set(ref(db, "mysteryMatches/" + matchId), {
     userA: candidateId,
     userB: uid,
@@ -94,14 +92,12 @@ async function tryClaim(candidateId, partnerRole, opts) {
     createdAt: serverTimestamp()
   });
 
-  // Give the initiator the SAME unique match id.
   await update(ref(db, "mysteryQueue/" + uid), {
     status: "matched",
     matchId,
     matchedWith: candidateId
   });
 
-  // Keep the candidate's existing matched record, adding its partner.
   await update(ref(db, "mysteryQueue/" + candidateId), {
     status: "matched",
     matchId,
@@ -112,24 +108,49 @@ async function tryClaim(candidateId, partnerRole, opts) {
   return true;
 }
 
+function watchRevealRequests(matchId, opts) {
+  const requestsRef = ref(db, "mysteryMatches/" + matchId + "/revealRequests");
+
+  if (revealListener) revealListener();
+  revealListener = onValue(requestsRef, snapshot => {
+    snapshot.forEach(child => {
+      const request = child.val();
+      if (!request || request.requester === uid) return;
+
+      if (request.status === "pending" && opts?.onRevealRequest) {
+        opts.onRevealRequest({ id: child.key });
+      }
+      if (request.status === "revealed" && opts?.onRevealResult) {
+        opts.onRevealResult({ revealed: true, requestId: child.key });
+      }
+      if (request.status === "declined" && opts?.onRevealResult) {
+        opts.onRevealResult({ revealed: false, requestId: child.key });
+      }
+    });
+  });
+}
+
 async function connectMatch(matchId, opts) {
   if (activeMatchId === matchId && messagesListener) return;
 
   try {
-    // Never subscribe to a chat just because a queue record contains an id.
-    // Verify that this Firebase user is one of the two matched users.
     const matchSnap = await get(ref(db, "mysteryMatches/" + matchId));
     const match = matchSnap.val();
 
     if (!match || match.status !== "active" ||
         (match.userA !== uid && match.userB !== uid)) {
       console.warn("FakePair rejected unauthorized/stale match:", matchId);
+      // The queue can briefly contain matchId before the match record exists.
+      // Retry so the second participant cannot miss the connection.
+      setTimeout(() => connectMatch(matchId, opts), 500);
       return;
     }
 
     activeMatchId = matchId;
-    if (opts.onMatched) opts.onMatched({ id: matchId });
+    if (opts.onMatched) opts.onMatched({ id: matchId, createdAt: match.createdAt });
+
     status(opts.setStatus, "Mystery connection active");
+    watchRevealRequests(matchId, opts);
 
     const messagesRef = ref(db, "mysteryChats/" + matchId + "/messages");
 
@@ -193,8 +214,8 @@ async function start(opts) {
       }
     });
 
-    // Watch our own queue record. Both users receive the same matchId.
-    onValue(ref(db, "mysteryQueue/" + uid), snapshot => {
+    if (ownQueueListener) ownQueueListener();
+    ownQueueListener = onValue(ref(db, "mysteryQueue/" + uid), snapshot => {
       const value = snapshot.val();
       if (!value?.matchId || activeMatchId) return;
       connectMatch(value.matchId, opts);
@@ -209,7 +230,6 @@ async function start(opts) {
 async function send(text) {
   if (!activeMatchId || !uid) return false;
 
-  // Verify this user still belongs to the match before writing.
   const matchSnap = await get(ref(db, "mysteryMatches/" + activeMatchId));
   const match = matchSnap.val();
   if (!match || match.status !== "active" ||
@@ -238,6 +258,43 @@ async function send(text) {
   return true;
 }
 
+async function requestReveal() {
+  if (!activeMatchId || !uid) return { mode: "none" };
+
+  const matchSnap = await get(ref(db, "mysteryMatches/" + activeMatchId));
+  const match = matchSnap.val();
+  if (!match || match.status !== "active" ||
+      (match.userA !== uid && match.userB !== uid)) {
+    return { mode: "none" };
+  }
+
+  const requestRef = push(ref(db, "mysteryMatches/" + activeMatchId + "/revealRequests"));
+  await set(requestRef, {
+    requester: uid,
+    status: "pending",
+    createdAt: serverTimestamp()
+  });
+
+  return { mode: "human", requestId: requestRef.key };
+}
+
+async function respondReveal(requestId, reveal) {
+  if (!activeMatchId || !requestId || !uid) return false;
+
+  const requestRef = ref(db, "mysteryMatches/" + activeMatchId + "/revealRequests/" + requestId);
+  const snap = await get(requestRef);
+  const request = snap.val();
+  if (!request || request.status !== "pending" || request.requester === uid) return false;
+
+  await update(requestRef, {
+    status: reveal ? "revealed" : "declined",
+    responder: uid,
+    respondedAt: serverTimestamp()
+  });
+
+  return true;
+}
+
 async function leave() {
   leaving = true;
 
@@ -245,10 +302,17 @@ async function leave() {
     queueListener();
     queueListener = null;
   }
-
+  if (ownQueueListener) {
+    ownQueueListener();
+    ownQueueListener = null;
+  }
   if (messagesListener) {
     messagesListener();
     messagesListener = null;
+  }
+  if (revealListener) {
+    revealListener();
+    revealListener = null;
   }
 
   if (queueRef) {
@@ -259,5 +323,5 @@ async function leave() {
   activeMatchId = null;
 }
 
-window.FakePairRealtime = { start, send, leave };
+window.FakePairRealtime = { start, send, leave, requestReveal, respondReveal };
 __fakePairRealtimeResolve(window.FakePairRealtime);
