@@ -59,6 +59,11 @@ async function publishQueue(partnerRole) {
 }
 
 async function tryClaim(candidateId, partnerRole, opts) {
+  // Deterministic tie-breaker: only the lexicographically smaller UID
+  // may claim the other user. This prevents both phones from creating
+  // two separate matches at the same time.
+  if (uid >= candidateId) return false;
+
   const candidateRef = ref(db, "mysteryQueue/" + candidateId);
 
   const tx = await runTransaction(candidateRef, current => {
@@ -93,6 +98,7 @@ async function tryClaim(candidateId, partnerRole, opts) {
     matchId: candidateId
   });
 
+  if (opts?.onMatched) opts.onMatched({ id: candidateId });
   return true;
 }
 
