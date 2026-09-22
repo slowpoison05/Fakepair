@@ -20,11 +20,14 @@ function addMessage(text,type='received',save=true){
  if(save)history.push({role:type==='sent'?'user':'assistant',content:text});
 }
 function startChat(){
+ chatMode='mystery';
+ mysteryMatchTarget = partner.role === 'Fake Girlfriend' ? 'Fake Boyfriend' : 'Fake Girlfriend';
  document.querySelector('main').hidden=true;document.querySelector('footer').hidden=true;document.querySelector('.nav').hidden=true;chatApp.hidden=false;
- document.getElementById('chatName').textContent=partner.name;document.getElementById('chatType').textContent=partner.role+' · AI';
- document.getElementById('mysteryStatus').hidden=true;
- document.getElementById('chatDisclaimer').textContent='AI companion · Mystery Mode is opt-in and may introduce another adult user.';document.getElementById('chatAvatar').textContent=partner.name.charAt(0).toUpperCase();
- history=[];chatMessages.innerHTML='';addMessage('Hey! I’m '+partner.name+'. 👋');setTimeout(()=>addMessage('I’m your '+partner.role.toLowerCase()+'. How was your day?'),450);chatInput.focus();
+ document.getElementById('chatName').textContent=partner.name;document.getElementById('chatType').textContent=partner.role+' · Mystery';
+ document.getElementById('mysteryStatus').hidden=false;
+ document.getElementById('mysteryStatus').textContent='Mystery Mode · looking for someone seeking '+mysteryMatchTarget;
+ document.getElementById('chatDisclaimer').textContent='Mystery Mode · AI or another adult user · anonymous · leave anytime.';document.getElementById('chatAvatar').textContent=partner.name.charAt(0).toUpperCase();
+ history=[];chatMessages.innerHTML='';addMessage('Mystery Mode is on. 🔮');setTimeout(()=>addMessage('Hey! I’m '+partner.name+'. 👋'),350);setTimeout(()=>addMessage('I’m your '+partner.role.toLowerCase()+'. How was your day?'),800);chatInput.focus();
 }
 function leaveChat(){
  if(mysteryTimer){clearTimeout(mysteryTimer);mysteryTimer=null;}
