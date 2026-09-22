@@ -30,7 +30,23 @@ function startChat(){
  document.getElementById('mysteryStatus').textContent='Mystery Mode · looking for someone seeking '+mysteryMatchTarget;
  document.getElementById('chatDisclaimer').textContent='Mystery Mode · AI or another adult user · anonymous · leave anytime.';document.getElementById('chatAvatar').textContent=partner.name.charAt(0).toUpperCase();
  history=[];chatMessages.innerHTML='';addMessage('Mystery Mode is on. 🔮');setTimeout(()=>addMessage('Hey! I’m '+partner.name+'. 👋'),350);setTimeout(()=>addMessage('I’m your '+partner.role.toLowerCase()+'. How was your day?'),800);chatInput.focus();
- if(window.FakePairRealtime) window.FakePairRealtime.start({partner,history,addMessage,setStatus:(s)=>document.getElementById('mysteryStatus').textContent=s,onMatched:(match)=>{realtimeMatchId=match.id;}});
+ startRealtimeMatching();
+}
+async function startRealtimeMatching(){
+ const opts={partner,history,addMessage,setStatus:(s)=>document.getElementById('mysteryStatus').textContent=s,onMatched:(match)=>{realtimeMatchId=match.id;}};
+ try{
+  let api=window.FakePairRealtime;
+  if(!api && window.FakePairRealtimeReady) api=await window.FakePairRealtimeReady;
+  if(!api){
+   document.getElementById('mysteryStatus').textContent='Connecting to Mystery Mode…';
+   setTimeout(startRealtimeMatching,500);
+   return;
+  }
+  await api.start(opts);
+ }catch(e){
+  console.error('FakePair realtime startup failed:',e);
+  document.getElementById('mysteryStatus').textContent='Realtime connection error: '+(e?.message||'Firebase unavailable');
+ }
 }
 function leaveChat(){
  if(window.FakePairRealtime) window.FakePairRealtime.leave();
