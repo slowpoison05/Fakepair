@@ -3,7 +3,7 @@ let __fakePairRealtimeReject;
 window.FakePairRealtimeReady = new Promise((resolve,reject)=>{__fakePairRealtimeResolve=resolve;__fakePairRealtimeReject=reject;});
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-import { getDatabase, ref, set, update, onValue, onDisconnect, runTransaction, push, serverTimestamp, remove } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
+import { getDatabase, ref, set, update, onValue, onDisconnect, runTransaction, push, serverTimestamp, remove, get } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDvdT2J831GjXtzqApPqYguOLaGLHzW-Ho",
@@ -60,78 +60,101 @@ async function publishQueue(partnerRole) {
 
 async function tryClaim(candidateId, partnerRole, opts) {
   // Deterministic tie-breaker: only the lexicographically smaller UID
-  // may claim the other user. This prevents both phones from creating
-  // two separate matches at the same time.
+  // may initiate a match. The candidate is also atomically marked matched,
+  // so only one opponent can ever claim that queue entry.
   if (uid >= candidateId) return false;
 
   const candidateRef = ref(db, "mysteryQueue/" + candidateId);
+  const matchId = push(ref(db, "mysteryMatches")).key;
 
   const tx = await runTransaction(candidateRef, current => {
     if (!current || current.status !== "waiting") return;
     if (current.lookingFor !== partnerRole) return;
+
     return {
       ...current,
       status: "matched",
+      matchId,
       matchedBy: uid
     };
   });
 
   if (!tx.committed) return false;
 
-  const matchRef = ref(db, "mysteryMatches/" + candidateId);
-  await set(matchRef, {
+  const candidate = tx.snapshot.val();
+  if (!candidate || candidate.matchId !== matchId) return false;
+
+  // One unique match record per pair.
+  await set(ref(db, "mysteryMatches/" + matchId), {
     userA: candidateId,
     userB: uid,
-    partnerRoleA: tx.snapshot.val().partnerRole,
+    partnerRoleA: candidate.partnerRole,
     partnerRoleB: partnerRole,
     status: "active",
     createdAt: serverTimestamp()
   });
 
+  // Give the initiator the SAME unique match id.
   await update(ref(db, "mysteryQueue/" + uid), {
     status: "matched",
-    matchId: candidateId
+    matchId,
+    matchedWith: candidateId
   });
 
+  // Keep the candidate's existing matched record, adding its partner.
   await update(ref(db, "mysteryQueue/" + candidateId), {
     status: "matched",
-    matchId: candidateId
+    matchId,
+    matchedWith: uid
   });
 
-  if (opts?.onMatched) opts.onMatched({ id: candidateId });
+  if (opts?.onMatched) opts.onMatched({ id: matchId });
   return true;
 }
 
-function connectMatch(matchId, opts) {
+async function connectMatch(matchId, opts) {
   if (activeMatchId === matchId && messagesListener) return;
 
-  activeMatchId = matchId;
-  // Keep the frontend message-routing state in sync on BOTH phones.
-  // The user who discovers the match through their own queue record must
-  // also switch from Gemini/AI routing to Firebase immediately.
-  if (opts.onMatched) opts.onMatched({ id: matchId });
-  status(opts.setStatus, "Mystery connection active");
+  try {
+    // Never subscribe to a chat just because a queue record contains an id.
+    // Verify that this Firebase user is one of the two matched users.
+    const matchSnap = await get(ref(db, "mysteryMatches/" + matchId));
+    const match = matchSnap.val();
 
-  const messagesRef = ref(db, "mysteryChats/" + matchId + "/messages");
+    if (!match || match.status !== "active" ||
+        (match.userA !== uid && match.userB !== uid)) {
+      console.warn("FakePair rejected unauthorized/stale match:", matchId);
+      return;
+    }
 
-  if (messagesListener) messagesListener();
-  messagesListener = onValue(messagesRef, snapshot => {
-    snapshot.forEach(child => {
-      const message = child.val();
-      if (!message || message.sender === uid) return;
+    activeMatchId = matchId;
+    if (opts.onMatched) opts.onMatched({ id: matchId });
+    status(opts.setStatus, "Mystery connection active");
 
-      const el = document.createElement("div");
-      el.className = "chat-bubble received";
-      el.dataset.msgId = child.key;
-      el.textContent = message.text;
+    const messagesRef = ref(db, "mysteryChats/" + matchId + "/messages");
 
-      if (!document.querySelector('[data-msg-id="' + child.key + '"]')) {
-        document.getElementById("chatMessages").appendChild(el);
-        document.getElementById("chatMessages").scrollTop =
-          document.getElementById("chatMessages").scrollHeight;
-      }
+    if (messagesListener) messagesListener();
+    messagesListener = onValue(messagesRef, snapshot => {
+      snapshot.forEach(child => {
+        const message = child.val();
+        if (!message || message.sender === uid) return;
+
+        const el = document.createElement("div");
+        el.className = "chat-bubble received";
+        el.dataset.msgId = child.key;
+        el.textContent = message.text;
+
+        if (!document.querySelector('[data-msg-id="' + child.key + '"]')) {
+          document.getElementById("chatMessages").appendChild(el);
+          document.getElementById("chatMessages").scrollTop =
+            document.getElementById("chatMessages").scrollHeight;
+        }
+      });
     });
-  });
+  } catch (error) {
+    console.error("FakePair match verification failed:", error);
+    status(opts.setStatus, "Match verification error: " + (error?.message || "Please retry"));
+  }
 }
 
 async function start(opts) {
@@ -185,6 +208,15 @@ async function start(opts) {
 
 async function send(text) {
   if (!activeMatchId || !uid) return false;
+
+  // Verify this user still belongs to the match before writing.
+  const matchSnap = await get(ref(db, "mysteryMatches/" + activeMatchId));
+  const match = matchSnap.val();
+  if (!match || match.status !== "active" ||
+      (match.userA !== uid && match.userB !== uid)) {
+    activeMatchId = null;
+    return false;
+  }
 
   const messageRef = push(ref(db, "mysteryChats/" + activeMatchId + "/messages"));
 
