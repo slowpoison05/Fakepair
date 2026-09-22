@@ -85,11 +85,6 @@ document.getElementById('startDemo').addEventListener('click',()=>{
 });
 chatForm.addEventListener('submit',e=>{e.preventDefault();const text=chatInput.value.trim();if(text)sendMessage(text);});
 document.getElementById('backHome').addEventListener('click',leaveChat);
-document.getElementById('mysteryBtn').addEventListener('click',()=>{
- mysteryModal.showModal();
- const consent=document.getElementById('mysteryConsent');
- if(consent) consent.checked=false;
-});
 document.getElementById('tryDemo').addEventListener('click',()=>{
  const consent=document.getElementById('mysteryConsent');
  if(!consent?.checked){
