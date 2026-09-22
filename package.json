@@ -1,1 +1,1 @@
-{"name":"fakepair","private":true,"type":"module","dependencies":{"openai":"latest"}}
+{"name":"fakepair","private":true,"type":"module","engines":{"node":"22.x"},"dependencies":{"openai":"latest"}}
