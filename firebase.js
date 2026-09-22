@@ -106,6 +106,10 @@ function connectMatch(matchId, opts) {
   if (activeMatchId === matchId && messagesListener) return;
 
   activeMatchId = matchId;
+  // Keep the frontend message-routing state in sync on BOTH phones.
+  // The user who discovers the match through their own queue record must
+  // also switch from Gemini/AI routing to Firebase immediately.
+  if (opts.onMatched) opts.onMatched({ id: matchId });
   status(opts.setStatus, "Mystery connection active");
 
   const messagesRef = ref(db, "mysteryChats/" + matchId + "/messages");
