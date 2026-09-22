@@ -34,7 +34,8 @@ function localReply(text){
 async function getAIReply(text){
  // Optional backend endpoint: set /api/chat on your deployed app later.
  try{
-  const res=await fetch('api/chat.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,partner,history})});
+  const endpoint=location.hostname.endsWith('.vercel.app')?'/api/chat':'api/chat.php';
+  const res=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,partner,history})});
   if(res.ok){const data=await res.json();if(data.reply)return data.reply;}
  }catch(e){}
  return localReply(text);
