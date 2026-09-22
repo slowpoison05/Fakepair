@@ -226,19 +226,24 @@ async function getAIReply(text){
   const res=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,partner:{...partner,mysteryMode:chatMode==='mystery'},history})});
   const data=await res.json().catch(()=>({}));
   if(res.ok && data.reply)return data.reply;
-  console.error('FakePair AI request failed:',res.status,data);
-  const detail=data.details||data.error||('HTTP '+res.status);
-  return 'AI connection issue: '+detail;
+  // Never expose API, token, quota, HTTP, or backend details to the user.
+  console.error('FakePair AI request failed:',res.status);
+  return localReply(text);
  }catch(e){
   console.error('FakePair AI network error:',e);
-  return 'AI connection issue: '+(e?.message||'Unable to reach the AI server.');
+  return localReply(text);
  }
 }
 
 async function sendMessage(text){
  if(chatMode==='mystery' && realtimeMatchId && window.FakePairRealtime){
   chatInput.value='';
-  await window.FakePairRealtime.send(text);
+  try{
+   await window.FakePairRealtime.send(text);
+  }catch(e){
+   console.error('Mystery message send failed:',e);
+   addMessage(localReply(text));
+  }
   return;
  }
  addMessage(text,'sent');chatInput.value='';
