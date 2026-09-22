@@ -89,7 +89,10 @@ async function sendMessage(text){
  }
  addMessage(text,'sent');chatInput.value='';
  const typing=document.createElement('div');typing.className='chat-bubble received typing';typing.textContent=partner.name+' is typing…';chatMessages.appendChild(typing);chatMessages.scrollTop=chatMessages.scrollHeight;
- const reply=await getAIReply(text);typing.remove();addMessage(reply);
+ const reply=await getAIReply(text);typing.remove();
+ // If a human matched while Gemini was responding, do not add the AI reply.
+ if(chatMode==='mystery' && realtimeMatchId) return;
+ addMessage(reply);
 }
 document.querySelectorAll('[data-open]').forEach(btn=>btn.addEventListener('click',()=>btn.dataset.open==='create'?createModal.showModal():mysteryModal.showModal()));
 document.querySelectorAll('[data-close]').forEach(btn=>btn.addEventListener('click',()=>btn.dataset.close==='create'?createModal.close():mysteryModal.close()));
