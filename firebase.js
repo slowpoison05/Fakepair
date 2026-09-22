@@ -1,3 +1,6 @@
+let __fakePairRealtimeResolve;
+let __fakePairRealtimeReject;
+window.FakePairRealtimeReady = new Promise((resolve,reject)=>{__fakePairRealtimeResolve=resolve;__fakePairRealtimeReject=reject;});
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 import { getDatabase, ref, set, update, onValue, onDisconnect, runTransaction, push, serverTimestamp, remove } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
@@ -215,3 +218,4 @@ async function leave() {
 }
 
 window.FakePairRealtime = { start, send, leave };
+__fakePairRealtimeResolve(window.FakePairRealtime);
