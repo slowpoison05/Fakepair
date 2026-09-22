@@ -8,6 +8,7 @@ let partner={name:'Maya',role:'Fake Girlfriend',vibe:'Playful & flirty'};
 let history=[];
 let chatMode='ai';
 let mysteryTimer=null;
+let mysteryMatchTarget='';
 const replies={
 'Playful & flirty':['Tell me more 👀','Okay, that made me smile.','You know I was waiting for you, right? 😌','Come on, tell me what happened today.'],
 'Calm & caring':['I’m listening. Take your time.','That sounds like a lot. How are you feeling about it?','You don’t have to figure everything out at once.','I’m glad you told me.'],
@@ -27,6 +28,7 @@ function startChat(){
 }
 function leaveChat(){
  if(mysteryTimer){clearTimeout(mysteryTimer);mysteryTimer=null;}
+ mysteryMatchTarget='';
  chatMode='ai';
  chatApp.hidden=true;document.querySelector('main').hidden=false;document.querySelector('footer').hidden=false;document.querySelector('.nav').hidden=false;}
 function localReply(text){
@@ -88,18 +90,21 @@ document.getElementById('tryDemo').addEventListener('click',()=>{
 
 function startMysteryMode(){
  chatMode='mystery';
+ // Cross-role matching: someone seeking a girlfriend is matched with
+ // someone seeking a boyfriend, and vice versa.
+ mysteryMatchTarget = partner.role === 'Fake Girlfriend' ? 'Fake Boyfriend' : 'Fake Girlfriend';
  document.querySelector('main').hidden=true;document.querySelector('footer').hidden=true;document.querySelector('.nav').hidden=true;chatApp.hidden=false;
  document.getElementById('chatName').textContent=partner.name;
  document.getElementById('chatType').textContent=partner.role+' · Mystery';
  document.getElementById('chatAvatar').textContent=partner.name.charAt(0).toUpperCase();
  document.getElementById('mysteryStatus').hidden=false;
- document.getElementById('mysteryStatus').textContent='Searching for another adult…';
+ document.getElementById('mysteryStatus').textContent='Searching for someone seeking '+mysteryMatchTarget+'…';
  document.getElementById('chatDisclaimer').textContent='Mystery Mode · AI or another adult user · anonymous · leave anytime.';
  history=[];chatMessages.innerHTML='';
  addMessage('Mystery Mode is on. 🔮');
  setTimeout(()=>addMessage('I’ll keep the conversation going while FakePair looks for another participating adult.'),350);
  mysteryTimer=setTimeout(()=>{
-  document.getElementById('mysteryStatus').textContent='No match yet · continuing with AI';
+  document.getElementById('mysteryStatus').textContent='No cross-role match yet · continuing with AI';
   addMessage('No human match is available right now, so I’m continuing with AI. You can keep chatting or leave Mystery Mode.');
  },6500);
  chatInput.focus();
