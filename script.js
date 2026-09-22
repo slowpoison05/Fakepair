@@ -53,7 +53,6 @@ function startRevealCycle(startTime){
  mysteryClock.hidden=false;
 
  const unlockAt=mysteryStartedAt+10*60*1000;
-
  const tick=()=>{
   const remaining=unlockAt-Date.now();
   if(remaining<=0){
@@ -65,7 +64,6 @@ function startRevealCycle(startTime){
   }
   mysteryClock.textContent=formatClock(remaining);
  };
-
  tick();
  revealCountdownTimer=setInterval(tick,1000);
  revealCycleTimer=setTimeout(()=>{
@@ -75,15 +73,10 @@ function startRevealCycle(startTime){
  },Math.max(0,unlockAt-Date.now()));
 }
 
-function resetRevealCycle(){
- startRevealCycle(Date.now());
-}
+function resetRevealCycle(){ startRevealCycle(Date.now()); }
 
 async function requestIdentityReveal(){
  if(!revealUnlocked || revealRequestPending) return;
-
- // If no human match exists, this is the AI branch. The AI can choose
- // not to reveal and the same request becomes available again after 10 minutes.
  if(!realtimeMatchId || !window.FakePairRealtime?.requestReveal){
   revealRequestPending=true;
   revealBtn.hidden=true;
@@ -93,14 +86,13 @@ async function requestIdentityReveal(){
   resetRevealCycle();
   return;
  }
-
  try{
   revealRequestPending=true;
   revealBtn.disabled=true;
   revealBtn.textContent='Waiting…';
   const result=await window.FakePairRealtime.requestReveal();
   if(result?.requestId){
-   document.getElementById('mysteryStatus').textContent='Reveal request sent · waiting for their choice…';
+   document.getElementById('mysteryStatus').textContent='Mystery continues · waiting for a response…';
   }else{
    revealRequestPending=false;
    revealBtn.disabled=false;
@@ -111,13 +103,12 @@ async function requestIdentityReveal(){
   revealRequestPending=false;
   revealBtn.disabled=false;
   revealBtn.textContent='🔍 Reveal';
-  document.getElementById('mysteryStatus').textContent='Could not send reveal request. Try again.';
+  document.getElementById('mysteryStatus').textContent='Mystery continues';
  }
 }
 
 function handleRevealRequest(request){
  if(!request?.id || !revealResponseModal) return;
- // Don't stack multiple dialogs for repeated Firebase value events.
  if(!revealResponseModal.open){
   revealResponseModal.dataset.requestId=request.id;
   revealResponseModal.showModal();
@@ -127,16 +118,15 @@ function handleRevealRequest(request){
 async function respondToReveal(reveal){
  const requestId=revealResponseModal?.dataset.requestId;
  if(!requestId || !window.FakePairRealtime?.respondReveal) return;
-
  try{
   await window.FakePairRealtime.respondReveal(requestId,reveal);
   revealResponseModal.close();
   if(reveal){
    addMessage('Okay. I’m revealing that I’m another anonymous adult user. 👤');
-   document.getElementById('mysteryStatus').textContent='Human connection · identity revealed';
+   document.getElementById('mysteryStatus').textContent='Mystery revealed';
   }else{
    addMessage('I’d rather keep the mystery for now. 😉');
-   document.getElementById('mysteryStatus').textContent='They chose to keep the mystery';
+   document.getElementById('mysteryStatus').textContent='Mystery continues';
   }
  }catch(e){
   console.error('Reveal response failed:',e);
@@ -145,19 +135,17 @@ async function respondToReveal(reveal){
 
 function handleRevealResult(result){
  if(!revealRequestPending) return;
-
  revealRequestPending=false;
  revealBtn.disabled=false;
  revealBtn.textContent='🔍 Reveal';
-
  if(result.revealed){
   revealBtn.hidden=true;
   mysteryClock.hidden=true;
-  document.getElementById('mysteryStatus').textContent='Human connection · identity revealed';
+  document.getElementById('mysteryStatus').textContent='Mystery revealed';
   addMessage('🔓 Mystery revealed: you were chatting with another anonymous adult user.');
   clearRevealTimers();
  }else{
-  document.getElementById('mysteryStatus').textContent='They don’t want to reveal yet · try again in 10 minutes';
+  document.getElementById('mysteryStatus').textContent='Mystery continues · try again in 10 minutes';
   addMessage('They don’t want to reveal yet. The mystery continues. 😉');
   resetRevealCycle();
  }
@@ -166,13 +154,20 @@ function handleRevealResult(result){
 function startChat(){
  chatMode='mystery';
  realtimeMatchId=null;
- mysteryMatchTarget = partner.role === 'Fake Girlfriend' ? 'Fake Boyfriend' : 'Fake Girlfriend';
+ mysteryMatchTarget=partner.role==='Fake Girlfriend'?'Fake Boyfriend':'Fake Girlfriend';
  document.querySelector('main').hidden=true;document.querySelector('footer').hidden=true;document.querySelector('.nav').hidden=true;chatApp.hidden=false;
- document.getElementById('chatName').textContent=partner.name;document.getElementById('chatType').textContent=partner.role+' · Mystery';
+ document.getElementById('chatName').textContent=partner.name;
+ document.getElementById('chatType').textContent=partner.role+' · Mystery';
  document.getElementById('mysteryStatus').hidden=false;
- document.getElementById('mysteryStatus').textContent='Mystery Mode · looking for someone seeking '+mysteryMatchTarget;
- document.getElementById('chatDisclaimer').textContent='Mystery Mode · AI or another adult user · anonymous · reveal requests unlock every 10 minutes.';document.getElementById('chatAvatar').textContent=partner.name.charAt(0).toUpperCase();
- history=[];chatMessages.innerHTML='';addMessage('Mystery Mode is on. 🔮');setTimeout(()=>addMessage('Hey! I’m '+partner.name+'. 👋'),350);setTimeout(()=>addMessage('I’m your '+partner.role.toLowerCase()+'. How was your day?'),800);chatInput.focus();
+ // Never expose the opposite role or matching state inside the chat.
+ document.getElementById('mysteryStatus').textContent='Mystery Mode · active';
+ document.getElementById('chatDisclaimer').textContent='Mystery Mode · AI or another adult user · anonymous · reveal requests unlock every 10 minutes.';
+ document.getElementById('chatAvatar').textContent=partner.name.charAt(0).toUpperCase();
+ history=[];chatMessages.innerHTML='';
+ addMessage('Mystery Mode is on. 🔮');
+ setTimeout(()=>addMessage('Hey! I’m '+partner.name+'. 👋'),350);
+ setTimeout(()=>addMessage('I’m your '+partner.role.toLowerCase()+'. How was your day?'),800);
+ chatInput.focus();
  startRevealCycle(Date.now());
  startRealtimeMatching();
 }
@@ -182,10 +177,10 @@ async function startRealtimeMatching(){
   partner,
   history,
   addMessage,
-  setStatus:(s)=>document.getElementById('mysteryStatus').textContent=s,
+  setStatus:(s)=>document.getElementById('mysteryStatus').textContent='Mystery Mode · active',
   onMatched:(match)=>{
    realtimeMatchId=match.id;
-   document.getElementById('mysteryStatus').textContent='Mystery connection active';
+   document.getElementById('mysteryStatus').textContent='Mystery Mode · active';
    startRevealCycle(Number(match.createdAt)||Date.now());
   },
   onRevealRequest:handleRevealRequest,
@@ -195,14 +190,14 @@ async function startRealtimeMatching(){
   let api=window.FakePairRealtime;
   if(!api && window.FakePairRealtimeReady) api=await window.FakePairRealtimeReady;
   if(!api){
-   document.getElementById('mysteryStatus').textContent='Connecting to Mystery Mode…';
+   document.getElementById('mysteryStatus').textContent='Mystery Mode · active';
    setTimeout(startRealtimeMatching,500);
    return;
   }
   await api.start(opts);
  }catch(e){
   console.error('FakePair realtime startup failed:',e);
-  document.getElementById('mysteryStatus').textContent='Realtime connection error: '+(e?.message||'Firebase unavailable');
+  document.getElementById('mysteryStatus').textContent='Mystery Mode · active';
  }
 }
 
@@ -277,6 +272,4 @@ document.getElementById('tryDemo').addEventListener('click',()=>{
  startMysteryMode();
 });
 
-function startMysteryMode(){
- startChat();
-}
+function startMysteryMode(){startChat();}
