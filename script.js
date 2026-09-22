@@ -6,6 +6,8 @@ const chatInput=document.getElementById('chatInput');
 const chatForm=document.getElementById('chatForm');
 let partner={name:'Maya',role:'Fake Girlfriend',vibe:'Playful & flirty'};
 let history=[];
+let chatMode='ai';
+let mysteryTimer=null;
 const replies={
 'Playful & flirty':['Tell me more 👀','Okay, that made me smile.','You know I was waiting for you, right? 😌','Come on, tell me what happened today.'],
 'Calm & caring':['I’m listening. Take your time.','That sounds like a lot. How are you feeling about it?','You don’t have to figure everything out at once.','I’m glad you told me.'],
@@ -18,10 +20,15 @@ function addMessage(text,type='received',save=true){
 }
 function startChat(){
  document.querySelector('main').hidden=true;document.querySelector('footer').hidden=true;document.querySelector('.nav').hidden=true;chatApp.hidden=false;
- document.getElementById('chatName').textContent=partner.name;document.getElementById('chatType').textContent=partner.role+' · AI';document.getElementById('chatAvatar').textContent=partner.name.charAt(0).toUpperCase();
+ document.getElementById('chatName').textContent=partner.name;document.getElementById('chatType').textContent=partner.role+' · AI';
+ document.getElementById('mysteryStatus').hidden=true;
+ document.getElementById('chatDisclaimer').textContent='AI companion · Mystery Mode is opt-in and may introduce another adult user.';document.getElementById('chatAvatar').textContent=partner.name.charAt(0).toUpperCase();
  history=[];chatMessages.innerHTML='';addMessage('Hey! I’m '+partner.name+'. 👋');setTimeout(()=>addMessage('I’m your '+partner.role.toLowerCase()+'. How was your day?'),450);chatInput.focus();
 }
-function leaveChat(){chatApp.hidden=true;document.querySelector('main').hidden=false;document.querySelector('footer').hidden=false;document.querySelector('.nav').hidden=false;}
+function leaveChat(){
+ if(mysteryTimer){clearTimeout(mysteryTimer);mysteryTimer=null;}
+ chatMode='ai';
+ chatApp.hidden=true;document.querySelector('main').hidden=false;document.querySelector('footer').hidden=false;document.querySelector('.nav').hidden=false;}
 function localReply(text){
  const lower=text.toLowerCase();let reply;
  if(/^(hi|hello|hey|namaste|hii)/.test(lower))reply='Hey! 😊 I was hoping you would message.';
@@ -64,5 +71,36 @@ document.getElementById('startDemo').addEventListener('click',()=>{
 });
 chatForm.addEventListener('submit',e=>{e.preventDefault();const text=chatInput.value.trim();if(text)sendMessage(text);});
 document.getElementById('backHome').addEventListener('click',leaveChat);
-document.getElementById('mysteryBtn').addEventListener('click',()=>mysteryModal.showModal());
-document.getElementById('tryDemo').addEventListener('click',()=>{mysteryModal.close();createModal.showModal();});
+document.getElementById('mysteryBtn').addEventListener('click',()=>{
+ mysteryModal.showModal();
+ const consent=document.getElementById('mysteryConsent');
+ if(consent) consent.checked=false;
+});
+document.getElementById('tryDemo').addEventListener('click',()=>{
+ const consent=document.getElementById('mysteryConsent');
+ if(!consent?.checked){
+  consent?.focus();
+  return;
+ }
+ mysteryModal.close();
+ startMysteryMode();
+});
+
+function startMysteryMode(){
+ chatMode='mystery';
+ document.querySelector('main').hidden=true;document.querySelector('footer').hidden=true;document.querySelector('.nav').hidden=true;chatApp.hidden=false;
+ document.getElementById('chatName').textContent=partner.name;
+ document.getElementById('chatType').textContent=partner.role+' · Mystery';
+ document.getElementById('chatAvatar').textContent=partner.name.charAt(0).toUpperCase();
+ document.getElementById('mysteryStatus').hidden=false;
+ document.getElementById('mysteryStatus').textContent='Searching for another adult…';
+ document.getElementById('chatDisclaimer').textContent='Mystery Mode · AI or another adult user · anonymous · leave anytime.';
+ history=[];chatMessages.innerHTML='';
+ addMessage('Mystery Mode is on. 🔮');
+ setTimeout(()=>addMessage('I’ll keep the conversation going while FakePair looks for another participating adult.'),350);
+ mysteryTimer=setTimeout(()=>{
+  document.getElementById('mysteryStatus').textContent='No match yet · continuing with AI';
+  addMessage('No human match is available right now, so I’m continuing with AI. You can keep chatting or leave Mystery Mode.');
+ },6500);
+ chatInput.focus();
+}
