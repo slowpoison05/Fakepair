@@ -4,12 +4,12 @@ export default async function handler(req, res) {
   }
 
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 
     if (!apiKey) {
-      console.error("FakePair: OPENAI_API_KEY is missing");
+      console.error("FakePair: GEMINI_API_KEY is missing");
       return res.status(500).json({
-        error: "OPENAI_API_KEY is not configured in this Vercel deployment."
+        error: "GEMINI_API_KEY is not configured in this Vercel deployment."
       });
     }
 
@@ -19,7 +19,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing message or partner" });
     }
 
-    const system = [
+    const systemInstruction = [
       "You are the AI companion inside FakePair.",
       "The user created a virtual partner. Always be transparent that you are AI if asked; never claim to be a real person.",
       "Be warm, conversational, playful and emotionally supportive without encouraging dependency or exclusivity.",
@@ -31,68 +31,76 @@ export default async function handler(req, res) {
       "Keep the experience adult-oriented and respectful."
     ].join("\n");
 
-    const input = [
-      { role: "developer", content: system },
-      ...Array.isArray(history) ? history.slice(-12).map(m => ({
-        role: m.role === "assistant" ? "assistant" : "user",
-        content: String(m.content || "")
-      })) : [],
-      { role: "user", content: String(message) }
-    ];
+    const contents = [];
 
-    const model = process.env.OPENAI_MODEL || "gpt-5.6-luna";
+    if (Array.isArray(history)) {
+      for (const item of history.slice(-12)) {
+        contents.push({
+          role: item.role === "assistant" ? "model" : "user",
+          parts: [{ text: String(item.content || "") }]
+        });
+      }
+    }
 
-    console.log("FakePair AI request", {
+    contents.push({
+      role: "user",
+      parts: [{ text: String(message) }]
+    });
+
+    const model = process.env.GEMINI_MODEL || "gemini-3.6-flash";
+    const url = "https://generativelanguage.googleapis.com/v1beta/models/" +
+      encodeURIComponent(model) + ":generateContent";
+
+    console.log("FakePair Gemini request", {
       model,
       partner: partner.name,
       historyLength: Array.isArray(history) ? history.length : 0
     });
 
-    const openaiRes = await fetch("https://api.openai.com/v1/responses", {
+    const upstream = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": "Bearer " + apiKey
+        "x-goog-api-key": apiKey
       },
       body: JSON.stringify({
-        model,
-        input
+        systemInstruction: {
+          parts: [{ text: systemInstruction }]
+        },
+        contents,
+        generationConfig: {
+          temperature: 0.9,
+          maxOutputTokens: 300
+        }
       })
     });
 
-    const data = await openaiRes.json().catch(() => ({}));
+    const data = await upstream.json().catch(() => ({}));
 
-    if (!openaiRes.ok) {
-      console.error("OpenAI API error:", openaiRes.status, data);
-      const details =
-        data?.error?.message ||
-        data?.error?.code ||
-        "OpenAI API request failed.";
+    if (!upstream.ok) {
+      console.error("Gemini API error:", upstream.status, data);
 
       return res.status(502).json({
-        error: "OpenAI API error",
-        details,
-        upstreamStatus: openaiRes.status
+        error: "Gemini API error",
+        details: data?.error?.message || data?.error?.status || "Gemini API request failed.",
+        upstreamStatus: upstream.status
       });
     }
 
-    const reply = data.output_text ||
-      (Array.isArray(data.output)
-        ? data.output
-            .flatMap(item => Array.isArray(item.content) ? item.content : [])
-            .filter(item => item.type === "output_text")
-            .map(item => item.text)
-            .join("")
-        : "");
+    const reply = data?.candidates?.[0]?.content?.parts
+      ?.filter(part => typeof part.text === "string")
+      .map(part => part.text)
+      .join("")
+      .trim();
 
     return res.status(200).json({
       reply: reply || "I'm here. Tell me more."
     });
   } catch (error) {
-    console.error("FakePair backend error:", error);
+    console.error("FakePair Gemini backend error:", error);
 
     return res.status(500).json({
-      error: "FakePair backend error",
+      error: "FakePair Gemini backend error",
       details: error?.message || "Unknown server error"
     });
   }
