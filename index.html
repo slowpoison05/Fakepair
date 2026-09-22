@@ -46,7 +46,7 @@
 <div class="steps">
 <article class="step-card"><span>01</span><div class="icon">✨</div><h3>Create your partner</h3><p>Pick girlfriend or boyfriend, a name, personality, language and vibe.</p></article>
 <article class="step-card featured"><span>02</span><div class="icon">🔮</div><h3>Enter Mystery Mode</h3><p>Opt in once, then the app can place a real person behind the role anonymously.</p></article>
-<article class="step-card"><span>03</span><div class="icon">🎭</div><h3>Get the reveal</h3><p>After the mystery, both sides can continue, reveal, or end the conversation.</p></article>
+<article class="step-card"><span>03</span><div class="icon">🎭</div><h3>Reveal when ready</h3><p>After 10 minutes, you can ask to reveal. A person chooses whether to reveal; AI may keep the mystery and the option returns later.</p></article>
 </div>
 </section>
 <section class="section banner"><div><div class="eyebrow">MYSTERY MODE</div><h2>Not every chat is what it seems.</h2><p>FakePair makes uncertainty part of the fun — without hiding what the experience is.</p></div><button class="outline-btn" data-open="mystery">Preview Mystery Mode</button></section>
@@ -71,12 +71,21 @@
 <div class="modal-head"><div><div class="eyebrow">MYSTERY MODE</div><h3>A real person may join.</h3></div><button class="close" data-close="mystery">×</button></div>
 <div class="mystery-preview"><div class="orb">?</div><p>Opt in and FakePair may connect you with someone looking for the opposite partner role. Someone seeking a <strong>Fake Girlfriend</strong> can match with someone seeking a <strong>Fake Boyfriend</strong>, and vice versa. Both sides remain anonymous. You can leave at any time.</p><div class="mystery-rules"><span>18+ only</span><span>Cross-role matching</span><span>Anonymous aliases</span><span>Block & report</span></div><label class="mystery-consent"><input id="mysteryConsent" type="checkbox"> <span>I understand that Mystery Mode may involve another adult user.</span></label><div class="preview-actions"><button class="outline-btn" data-close="mystery">Not now</button><button class="primary-btn" id="tryDemo">Enter Mystery →</button></div></div>
 </dialog>
+
 <section id="chatApp" class="chat-app" hidden>
 <div class="chat-window">
-<div class="chat-window-head"><button id="backHome" class="icon-btn">←</button><div class="avatar" id="chatAvatar">M</div><div class="chat-person"><strong id="chatName">Maya</strong><small id="chatType">Fake Girlfriend · AI</small><span id="mysteryStatus" class="mystery-status" hidden>Searching for another adult…</span></div><span class="online">●</span></div>
+<div class="chat-window-head"><button id="backHome" class="icon-btn">←</button><div class="avatar" id="chatAvatar">M</div><div class="chat-person"><strong id="chatName">Maya</strong><small id="chatType">Fake Girlfriend · AI</small><span id="mysteryStatus" class="mystery-status" hidden>Searching for another adult…</span></div><div class="mystery-clock-wrap"><span id="mysteryClock" class="mystery-clock" hidden>10:00</span><button id="revealBtn" class="mini-btn reveal-btn" hidden>🔍 Reveal</button></div><span class="online">●</span></div>
 <div class="chat-messages" id="chatMessages"></div>
 <div class="chat-controls"><form id="chatForm"><input id="chatInput" autocomplete="off" placeholder="Message your partner…"><button class="send-btn">↑</button></form></div>
 <div class="chat-disclaimer" id="chatDisclaimer">AI companion · Mystery Mode is opt-in and may introduce another adult user.</div>
-</div></section><script src="script.js"></script>
-<script type="module" src="firebase.js"></script></body>
+</div></section>
+
+<dialog id="revealResponseModal">
+<div class="modal-head"><div><div class="eyebrow">MYSTERY REQUEST</div><h3>Reveal your side?</h3></div><button class="close" id="closeRevealResponse">×</button></div>
+<div class="reveal-response-body"><p>Your mystery partner wants to know who is behind the conversation.</p><div class="preview-actions"><button class="outline-btn" id="keepMysteryBtn">Keep Mystery</button><button class="primary-btn" id="revealHumanBtn">Reveal</button></div></div>
+</dialog>
+
+<script src="script.js"></script>
+<script type="module" src="firebase.js"></script>
+</body>
 </html>
