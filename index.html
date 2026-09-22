@@ -69,14 +69,14 @@
 
 <dialog id="mysteryModal">
 <div class="modal-head"><div><div class="eyebrow">MYSTERY MODE</div><h3>A real person may join.</h3></div><button class="close" data-close="mystery">×</button></div>
-<div class="mystery-preview"><div class="orb">?</div><p>After you opt in, FakePair can match you with another adult user who is also participating. Their identity and location stay hidden.</p><div class="preview-actions"><button class="outline-btn" data-close="mystery">Not now</button><button class="primary-btn" id="tryDemo">Try demo →</button></div></div>
+<div class="mystery-preview"><div class="orb">?</div><p>Opt in and FakePair may connect your conversation to another participating adult. Both sides remain anonymous. You can leave at any time.</p><div class="mystery-rules"><span>18+ only</span><span>Anonymous aliases</span><span>Block & report</span></div><label class="mystery-consent"><input id="mysteryConsent" type="checkbox"> <span>I understand that Mystery Mode may involve another adult user.</span></label><div class="preview-actions"><button class="outline-btn" data-close="mystery">Not now</button><button class="primary-btn" id="tryDemo">Enter Mystery →</button></div></div>
 </dialog>
 <section id="chatApp" class="chat-app" hidden>
 <div class="chat-window">
-<div class="chat-window-head"><button id="backHome" class="icon-btn">←</button><div class="avatar" id="chatAvatar">M</div><div class="chat-person"><strong id="chatName">Maya</strong><small id="chatType">Fake Girlfriend · AI</small></div><span class="online">●</span></div>
+<div class="chat-window-head"><button id="backHome" class="icon-btn">←</button><div class="avatar" id="chatAvatar">M</div><div class="chat-person"><strong id="chatName">Maya</strong><small id="chatType">Fake Girlfriend · AI</small><span id="mysteryStatus" class="mystery-status" hidden>Searching for another adult…</span></div><span class="online">●</span></div>
 <div class="chat-messages" id="chatMessages"></div>
 <div class="chat-controls"><button id="mysteryBtn" class="mini-btn">🔮 Mystery</button><form id="chatForm"><input id="chatInput" autocomplete="off" placeholder="Message your partner…"><button class="send-btn">↑</button></form></div>
-<div class="chat-disclaimer">AI companion demo · Mystery Mode is opt-in and may introduce another adult user.</div>
+<div class="chat-disclaimer" id="chatDisclaimer">AI companion · Mystery Mode is opt-in and may introduce another adult user.</div>
 </div></section><script src="script.js"></script>
 </body>
 </html>
