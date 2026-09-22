@@ -1,5 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
-import { getDatabase, ref, push, set, onValue, onDisconnect, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+import { getDatabase, ref, set, update, onValue, onDisconnect, runTransaction, push, serverTimestamp, remove } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDvdT2J831GjXtzqApPqYguOLaGLHzW-Ho",
@@ -12,80 +13,205 @@ const firebaseConfig = {
   measurementId: "G-C66P0NC61V"
 };
 
-const app=initializeApp(firebaseConfig);
-const db=getDatabase(app);
-const sessionId=crypto.randomUUID();
-let queueRef=null,matchRef=null,messagesRef=null,matchId=null,partnerRole=null,unsubs=[];
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
 
-function targetRole(role){return role==="Fake Girlfriend"?"Fake Boyfriend":"Fake Girlfriend";}
-function status(fn,s){if(fn)fn(s);}
-async function findMatch(role){
- const wanted=targetRole(role);
- const candidateRef=ref(db,"mysteryQueue");
- let found=null;
- const snap=await new Promise(resolve=>onValue(candidateRef,resolve,{onlyOnce:true}));
- snap.forEach(child=>{
-  const v=child.val();
-  if(!found && child.key!==sessionId && v?.status==="waiting" && v?.lookingFor===role) found={id:child.key,value:v};
- });
- return found;
-}
-async function claim(candidate,role){
- const a=ref(db,"mysteryMatches/"+candidate.id);
- const tx=await runTransaction(a,current=>{
-  if(current!==null)return;
-  return {userA:candidate.id,userB:sessionId,roleA:candidate.value.partnerRole,roleB:role,status:"active",createdAt:serverTimestamp()};
- });
- return tx.committed;
-}
-async function start(opts){
- partnerRole=opts.partner.role;
- const wanted=targetRole(partnerRole);
- queueRef=ref(db,"mysteryQueue/"+sessionId);
- await set(queueRef,{status:"waiting",partnerRole,lookingFor:wanted,joinedAt:serverTimestamp()});
- onDisconnect(queueRef).remove();
- status(opts.setStatus,"Mystery Mode · looking for "+wanted+"…");
+let uid = null;
+let queueRef = null;
+let queueListener = null;
+let messagesListener = null;
+let activeMatchId = null;
+let activePartnerRole = null;
+let leaving = false;
 
- const candidate=await findMatch(partnerRole);
- if(candidate && await claim(candidate,partnerRole)){
-   matchId=candidate.id;
-   await set(ref(db,"mysteryQueue/"+sessionId+"/status"),"matched");
-   await set(ref(db,"mysteryQueue/"+candidate.id+"/status"),"matched");
- } else {
-   const statusRef=ref(db,"mysteryQueue/"+sessionId+"/matchId");
-   onValue(statusRef,s=>{
-     const id=s.val();
-     if(id && !matchId){matchId=id;connectMatch(id,opts);}
-   });
-   return;
- }
- connectMatch(matchId,opts);
+const status = (fn, text) => { if (fn) fn(text); };
+
+async function ensureAuth() {
+  if (auth.currentUser) {
+    uid = auth.currentUser.uid;
+    return;
+  }
+  const credential = await signInAnonymously(auth);
+  uid = credential.user.uid;
 }
-function connectMatch(id,opts){
- matchRef=ref(db,"mysteryMatches/"+id);
- messagesRef=ref(db,"mysteryChats/"+id+"/messages");
- status(opts.setStatus,"Mystery connection active");
- onValue(messagesRef,s=>{
-  s.forEach(child=>{
-   const v=child.val();
-   if(v && v.sender!==sessionId && !document.querySelector('[data-msg-id="'+child.key+'"]')){
-    const el=document.createElement("div");
-    el.className="chat-bubble received";el.dataset.msgId=child.key;el.textContent=v.text;
-    document.getElementById("chatMessages").appendChild(el);
-    document.getElementById("chatMessages").scrollTop=document.getElementById("chatMessages").scrollHeight;
-   }
+
+function oppositeRole(role) {
+  return role === "Fake Girlfriend" ? "Fake Boyfriend" : "Fake Girlfriend";
+}
+
+async function publishQueue(partnerRole) {
+  const lookingFor = oppositeRole(partnerRole);
+  queueRef = ref(db, "mysteryQueue/" + uid);
+
+  await set(queueRef, {
+    status: "waiting",
+    partnerRole,
+    lookingFor,
+    joinedAt: serverTimestamp()
   });
- });
+
+  onDisconnect(queueRef).remove();
+  return lookingFor;
 }
-async function send(text){
- if(!matchId)return;
- const r=push(ref(db,"mysteryChats/"+matchId+"/messages"));
- await set(r,{sender:sessionId,text,createdAt:serverTimestamp()});
- const el=document.createElement("div");el.className="chat-bubble sent";el.textContent=text;el.dataset.msgId=r.key;
- document.getElementById("chatMessages").appendChild(el);
- document.getElementById("chatMessages").scrollTop=document.getElementById("chatMessages").scrollHeight;
+
+async function tryClaim(candidateId, partnerRole, opts) {
+  const candidateRef = ref(db, "mysteryQueue/" + candidateId);
+
+  const tx = await runTransaction(candidateRef, current => {
+    if (!current || current.status !== "waiting") return;
+    if (current.lookingFor !== partnerRole) return;
+    return {
+      ...current,
+      status: "matched",
+      matchedBy: uid
+    };
+  });
+
+  if (!tx.committed) return false;
+
+  const matchRef = ref(db, "mysteryMatches/" + candidateId);
+  await set(matchRef, {
+    userA: candidateId,
+    userB: uid,
+    partnerRoleA: tx.snapshot.val().partnerRole,
+    partnerRoleB: partnerRole,
+    status: "active",
+    createdAt: serverTimestamp()
+  });
+
+  await update(ref(db, "mysteryQueue/" + uid), {
+    status: "matched",
+    matchId: candidateId
+  });
+
+  await update(ref(db, "mysteryQueue/" + candidateId), {
+    status: "matched",
+    matchId: candidateId
+  });
+
+  return true;
 }
-async function leave(){
- if(queueRef) await set(queueRef,null).catch(()=>{});
+
+function connectMatch(matchId, opts) {
+  if (activeMatchId === matchId && messagesListener) return;
+
+  activeMatchId = matchId;
+  status(opts.setStatus, "Mystery connection active");
+
+  const messagesRef = ref(db, "mysteryChats/" + matchId + "/messages");
+
+  if (messagesListener) messagesListener();
+  messagesListener = onValue(messagesRef, snapshot => {
+    snapshot.forEach(child => {
+      const message = child.val();
+      if (!message || message.sender === uid) return;
+
+      const el = document.createElement("div");
+      el.className = "chat-bubble received";
+      el.dataset.msgId = child.key;
+      el.textContent = message.text;
+
+      if (!document.querySelector('[data-msg-id="' + child.key + '"]')) {
+        document.getElementById("chatMessages").appendChild(el);
+        document.getElementById("chatMessages").scrollTop =
+          document.getElementById("chatMessages").scrollHeight;
+      }
+    });
+  });
 }
-window.FakePairRealtime={start,send,leave};
+
+async function start(opts) {
+  leaving = false;
+
+  try {
+    await ensureAuth();
+
+    activePartnerRole = opts.partner.role;
+    const lookingFor = await publishQueue(activePartnerRole);
+
+    status(opts.setStatus, "Searching for " + lookingFor + "…");
+
+    if (queueListener) queueListener();
+
+    queueListener = onValue(ref(db, "mysteryQueue"), async snapshot => {
+      if (leaving || activeMatchId) return;
+
+      const candidates = [];
+      snapshot.forEach(child => {
+        const value = child.val();
+        if (
+          child.key !== uid &&
+          value &&
+          value.status === "waiting" &&
+          value.lookingFor === activePartnerRole
+        ) {
+          candidates.push({ id: child.key, joinedAt: value.joinedAt || 0 });
+        }
+      });
+
+      candidates.sort((a, b) => Number(a.joinedAt) - Number(b.joinedAt));
+
+      for (const candidate of candidates) {
+        if (await tryClaim(candidate.id, activePartnerRole, opts)) break;
+      }
+    });
+
+    // Watch our own queue record. Both users receive the same matchId.
+    onValue(ref(db, "mysteryQueue/" + uid), snapshot => {
+      const value = snapshot.val();
+      if (!value?.matchId || activeMatchId) return;
+      connectMatch(value.matchId, opts);
+    });
+
+  } catch (error) {
+    console.error("FakePair realtime error:", error);
+    status(opts.setStatus, "Realtime connection error: " + (error?.message || "Check Firebase setup"));
+  }
+}
+
+async function send(text) {
+  if (!activeMatchId || !uid) return false;
+
+  const messageRef = push(ref(db, "mysteryChats/" + activeMatchId + "/messages"));
+
+  await set(messageRef, {
+    sender: uid,
+    text,
+    createdAt: serverTimestamp()
+  });
+
+  const el = document.createElement("div");
+  el.className = "chat-bubble sent";
+  el.dataset.msgId = messageRef.key;
+  el.textContent = text;
+
+  document.getElementById("chatMessages").appendChild(el);
+  document.getElementById("chatMessages").scrollTop =
+    document.getElementById("chatMessages").scrollHeight;
+
+  return true;
+}
+
+async function leave() {
+  leaving = true;
+
+  if (queueListener) {
+    queueListener();
+    queueListener = null;
+  }
+
+  if (messagesListener) {
+    messagesListener();
+    messagesListener = null;
+  }
+
+  if (queueRef) {
+    await remove(queueRef).catch(() => {});
+    queueRef = null;
+  }
+
+  activeMatchId = null;
+}
+
+window.FakePairRealtime = { start, send, leave };
