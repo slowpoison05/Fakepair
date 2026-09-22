@@ -9,6 +9,8 @@ let history=[];
 let chatMode='ai';
 let mysteryTimer=null;
 let mysteryMatchTarget='';
+let realtimeMatchId=null;
+let realtimeUnsubscribe=null;
 const replies={
 'Playful & flirty':['Tell me more 👀','Okay, that made me smile.','You know I was waiting for you, right? 😌','Come on, tell me what happened today.'],
 'Calm & caring':['I’m listening. Take your time.','That sounds like a lot. How are you feeling about it?','You don’t have to figure everything out at once.','I’m glad you told me.'],
@@ -28,8 +30,10 @@ function startChat(){
  document.getElementById('mysteryStatus').textContent='Mystery Mode · looking for someone seeking '+mysteryMatchTarget;
  document.getElementById('chatDisclaimer').textContent='Mystery Mode · AI or another adult user · anonymous · leave anytime.';document.getElementById('chatAvatar').textContent=partner.name.charAt(0).toUpperCase();
  history=[];chatMessages.innerHTML='';addMessage('Mystery Mode is on. 🔮');setTimeout(()=>addMessage('Hey! I’m '+partner.name+'. 👋'),350);setTimeout(()=>addMessage('I’m your '+partner.role.toLowerCase()+'. How was your day?'),800);chatInput.focus();
+ if(window.FakePairRealtime) window.FakePairRealtime.start({partner,history,addMessage,setStatus:(s)=>document.getElementById('mysteryStatus').textContent=s,onMatched:(match)=>{realtimeMatchId=match.id;}});
 }
 function leaveChat(){
+ if(window.FakePairRealtime) window.FakePairRealtime.leave();
  if(mysteryTimer){clearTimeout(mysteryTimer);mysteryTimer=null;}
  mysteryMatchTarget='';
  chatMode='ai';
@@ -62,6 +66,11 @@ async function getAIReply(text){
  }
 }
 async function sendMessage(text){
+ if(chatMode==='mystery' && realtimeMatchId && window.FakePairRealtime){
+  chatInput.value='';
+  await window.FakePairRealtime.send(text);
+  return;
+ }
  addMessage(text,'sent');chatInput.value='';
  const typing=document.createElement('div');typing.className='chat-bubble received typing';typing.textContent=partner.name+' is typing…';chatMessages.appendChild(typing);chatMessages.scrollTop=chatMessages.scrollHeight;
  const reply=await getAIReply(text);typing.remove();addMessage(reply);
