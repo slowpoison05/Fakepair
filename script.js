@@ -19,7 +19,7 @@ let revealCountdownTimer=null;
 let revealRequestPending=false;
 let revealUnlocked=false;
 let mysteryStartedAt=0;
-let contextSyncTimer=null;
+
 
 const replies={
 'Playful & flirty':['Tell me more 👀','Okay, that made me smile.','You know I was waiting for you, right? 😌','Come on, tell me what happened today.'],
@@ -32,23 +32,16 @@ function addMessage(text,type='received',save=true){
  const el=document.createElement('div');el.className='chat-bubble '+type;el.textContent=text;chatMessages.appendChild(el);chatMessages.scrollTop=chatMessages.scrollHeight;
  if(save){
   history.push({role:type==='sent'?'user':'assistant',content:text});
-  syncMysteryContext();
  }
-}
-
-function syncMysteryContext(){
- if(chatMode!=='mystery' || realtimeMatchId || !window.FakePairRealtime?.updateContext) return;
- clearTimeout(contextSyncTimer);
- contextSyncTimer=setTimeout(()=>{
-  window.FakePairRealtime.updateContext(history.slice(-40)).catch(e=>console.error('Context sync failed:',e));
- },150);
 }
 
 function showPreviousAIContext(context){
  if(!Array.isArray(context) || !context.length) return;
+ chatMessages.innerHTML='';
+
  const divider=document.createElement('div');
  divider.className='mystery-context-divider';
- divider.textContent='Earlier AI conversation';
+ divider.textContent='Conversation so far';
  chatMessages.appendChild(divider);
 
  context.forEach(item=>{
@@ -213,9 +206,19 @@ async function startRealtimeMatching(){
    realtimeMatchId=match.id;
    document.getElementById('mysteryStatus').textContent='Mystery Mode · active';
    startRevealCycle(Number(match.createdAt)||Date.now());
+
+   // Transfer the AI conversation only once a human match exists.
+   if(window.FakePairRealtime?.publishMatchContext){
+    window.FakePairRealtime.publishMatchContext(match.id, history.slice(-40))
+      .catch(e=>console.error('Context transfer failed:',e));
+   }
   },
   onRevealRequest:handleRevealRequest,
-  onRevealResult:handleRevealResult
+  onRevealResult:handleRevealResult,
+  onDisconnected:()=>{
+   realtimeMatchId=null;
+   document.getElementById('mysteryStatus').textContent='Mystery Mode · active';
+  }
  };
  try{
   let api=window.FakePairRealtime;
@@ -226,8 +229,6 @@ async function startRealtimeMatching(){
    return;
   }
   await api.start(opts);
-  // Keep the latest AI conversation available in the queue until a human matches.
-  syncMysteryContext();
  }catch(e){
   console.error('FakePair realtime startup failed:',e);
   document.getElementById('mysteryStatus').textContent='Mystery Mode · active';
@@ -238,8 +239,6 @@ function leaveChat(){
  if(window.FakePairRealtime) window.FakePairRealtime.leave();
  if(mysteryTimer){clearTimeout(mysteryTimer);mysteryTimer=null;}
  clearRevealTimers();
- clearTimeout(contextSyncTimer);
- contextSyncTimer=null;
  mysteryMatchTarget='';realtimeMatchId=null;revealRequestPending=false;
  chatMode='ai';
  chatApp.hidden=true;document.querySelector('main').hidden=false;document.querySelector('footer').hidden=false;document.querySelector('.nav').hidden=false;
