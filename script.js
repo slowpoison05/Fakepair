@@ -251,14 +251,14 @@ function humanReplyDelay(text){
  const clean=String(text||'').trim();
  const length=clean.length;
  let base;
- if(length<15) base=1200;
- else if(length<50) base=2100;
- else if(length<120) base=3100;
- else if(length<240) base=4200;
- else base=5000;
- if(/[?]/.test(clean)) base+=500;
- if(/sad|bad|upset|stress|tired|lonely|hurt|worried|scared|failed|miss/i.test(clean)) base+=500;
- return Math.min(7500,Math.max(1000,base+(Math.random()*1400-450)));
+ if(length<15) base=900;
+ else if(length<50) base=1500;
+ else if(length<120) base=2200;
+ else if(length<240) base=3000;
+ else base=3600;
+ if(/[?]/.test(clean)) base+=300;
+ if(/sad|bad|upset|stress|tired|lonely|hurt|worried|scared|failed|miss/i.test(clean)) base+=300;
+ return Math.min(5000,Math.max(800,base+(Math.random()*900-300)));
 }
 
 function localReply(text){
