@@ -45,7 +45,7 @@ function oppositeRole(role) {
   return role === "Fake Girlfriend" ? "Fake Boyfriend" : "Fake Girlfriend";
 }
 
-async function publishQueue(partnerRole) {
+async function publishQueue(partnerRole, context) {
   const lookingFor = oppositeRole(partnerRole);
   queueRef = ref(db, "mysteryQueue/" + uid);
 
@@ -53,6 +53,7 @@ async function publishQueue(partnerRole) {
     status: "waiting",
     partnerRole,
     lookingFor,
+    context: Array.isArray(context) ? context.slice(-40) : [],
     joinedAt: serverTimestamp()
   });
 
@@ -89,6 +90,7 @@ async function tryClaim(candidateId, partnerRole, opts) {
     partnerRoleA: candidate.partnerRole,
     partnerRoleB: partnerRole,
     status: "active",
+    context: Array.isArray(candidate.context) ? candidate.context.slice(-40) : [],
     createdAt: serverTimestamp()
   });
 
@@ -150,6 +152,13 @@ async function connectMatch(matchId, opts) {
     if (opts.onMatched) opts.onMatched({ id: matchId, createdAt: match.createdAt });
 
     status(opts.setStatus, "Mystery connection active");
+
+    // Show the conversation that happened with the AI before this human joined.
+    // This gives the new participant enough context to continue naturally.
+    if (Array.isArray(match.context) && match.context.length && opts.onContext) {
+      opts.onContext(match.context);
+    }
+
     watchRevealRequests(matchId, opts);
 
     const messagesRef = ref(db, "mysteryChats/" + matchId + "/messages");
@@ -185,7 +194,7 @@ async function start(opts) {
     await ensureAuth();
 
     activePartnerRole = opts.partner.role;
-    const lookingFor = await publishQueue(activePartnerRole);
+    const lookingFor = await publishQueue(activePartnerRole, opts.history);
 
     status(opts.setStatus, "Searching for " + lookingFor + "…");
 
@@ -225,6 +234,13 @@ async function start(opts) {
     console.error("FakePair realtime error:", error);
     status(opts.setStatus, "Realtime connection error: " + (error?.message || "Check Firebase setup"));
   }
+}
+
+async function updateContext(context) {
+  if (!uid || !Array.isArray(context) || activeMatchId) return false;
+  const currentQueueRef = ref(db, "mysteryQueue/" + uid);
+  await update(currentQueueRef, { context: context.slice(-40) });
+  return true;
 }
 
 async function send(text) {
@@ -323,5 +339,5 @@ async function leave() {
   activeMatchId = null;
 }
 
-window.FakePairRealtime = { start, send, leave, requestReveal, respondReveal };
+window.FakePairRealtime = { start, send, leave, requestReveal, respondReveal, updateContext };
 __fakePairRealtimeResolve(window.FakePairRealtime);
