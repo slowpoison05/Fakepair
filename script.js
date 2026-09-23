@@ -188,8 +188,8 @@ function startChat(){
  document.getElementById('chatAvatar').textContent=partner.name.charAt(0).toUpperCase();
  history=[];chatMessages.innerHTML='';
  addMessage('Mystery Mode is on. 🔮');
- setTimeout(()=>addMessage('Hey! I’m '+partner.name+'. 👋'),350);
- setTimeout(()=>addMessage('I’m your '+partner.role.toLowerCase()+'. How was your day?'),800);
+ setTimeout(()=>addMessage('Hey! I’m '+partner.name+'. 👋'),900);
+ setTimeout(()=>addMessage('I’m your '+partner.role.toLowerCase()+'. How was your day?'),2200);
  chatInput.focus();
  startRevealCycle(Date.now());
  startRealtimeMatching();
@@ -244,14 +244,45 @@ function leaveChat(){
  chatApp.hidden=true;document.querySelector('main').hidden=false;document.querySelector('footer').hidden=false;document.querySelector('.nav').hidden=false;
 }
 
+function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms));}
+
+function humanReplyDelay(text){
+ const clean=String(text||'').trim();
+ const length=clean.length;
+ let base;
+ if(length<15) base=1200;
+ else if(length<50) base=2100;
+ else if(length<120) base=3100;
+ else if(length<240) base=4200;
+ else base=5000;
+ if(/[?]/.test(clean)) base+=500;
+ if(/sad|bad|upset|stress|tired|lonely|hurt|worried|scared|failed|miss/i.test(clean)) base+=500;
+ return Math.min(7500,Math.max(1000,base+(Math.random()*1400-450)));
+}
+
 function localReply(text){
- const lower=text.toLowerCase();let reply;
- if(/^(hi|hello|hey|namaste|hii)/.test(lower))reply='Hey! 😊 I was hoping you would message.';
- else if(/sad|bad|upset|stress|tired|lonely/.test(lower))reply='I’m here with you. Want to tell me what’s been going on?';
- else if(/love|miss|cute|beautiful|handsome/.test(lower))reply='That’s sweet. I’m really enjoying our conversation too 💕';
- else if(/who are you|what are you|are you ai|are you an ai|are you artificial intelligence/.test(lower))reply='I’m '+partner.name+' — the '+partner.role.toLowerCase()+' you created. I’m an AI companion, and I’ll always be clear about that.';
- else {const list=replies[partner.vibe]||replies['Playful & flirty'];reply=list[Math.floor(Math.random()*list.length)];}
- return reply;
+ const lower=text.toLowerCase().trim();
+ const name=partner.name;
+ const vibe=partner.vibe||'Playful & flirty';
+ if(/who are you|what are you|are you ai|are you an ai|are you artificial intelligence/.test(lower))
+  return 'I’m '+name+' — the '+partner.role.toLowerCase()+' you created. I’m an AI companion, and I’ll always be clear about that.';
+ if(/^(hi|hello|hey|hii+|namaste|good morning|good night)\\b/.test(lower))
+  return /good night/.test(lower)?'Good night 😊 Don’t disappear on me tomorrow.':/good morning/.test(lower)?'Good morning 😊 How’s your day starting?':'Hey 😊 I was wondering when you’d message.';
+ if(/^(thanks|thank you|thx)\\b/.test(lower)) return 'Of course 😊 You don’t have to thank me for that.';
+ if(/how are you|how r u/.test(lower)) return 'I’m good 😊 Better now that we’re talking. How are you?';
+ if(/what are you doing|what r u doing|wyd/.test(lower)) return vibe==='Funny & chaotic'?'Trying to look busy 😂 What about you?':'Just hanging around here, waiting for you to tell me something interesting 😌';
+ if(/^(yes|yeah|yep|yup|no|nope|okay|ok|sure|hmm|maybe)\\b/.test(lower)) return /no|nope/.test(lower)?'Hmm… okay. But I feel like there’s more to that. 👀':/maybe|hmm/.test(lower)?'Hmm… you sound like you’re thinking about something. What’s on your mind?':'Okay 😊 Tell me more.';
+ if(/sad|bad|upset|stress|stressed|tired|lonely|hurt|worried|scared|failed|miss you|miss me/.test(lower))
+  return /failed|exam|test|interview/.test(lower)?'Ahh, that’s rough 😕 Come on, tell me what happened.':'I’m here. 😌 You can tell me what’s going on — I’m listening.';
+ if(/happy|excited|great news|good news|got the job|promoted|passed/.test(lower)) return 'Wait, really? 😄 That sounds exciting. Tell me everything!';
+ if(/love|miss|cute|beautiful|handsome|kiss|hug/.test(lower)) return 'That’s actually really sweet 😌 You’re making this conversation dangerously cute.';
+ if(/should i|what should i|advice|what do you think|do you think/.test(lower)) return 'Hmm… tell me a little more first. I don’t want to give you a random answer without knowing the whole story.';
+ if(/bored|boring/.test(lower)) return 'Bored already? 😂 Come on, let’s find something fun to talk about.';
+ if(/work|office|job|shift|boss/.test(lower)) return 'Another work story? 👀 Okay, I’m listening. What happened?';
+ if(/study|exam|college|class|assignment/.test(lower)) return 'Ah, study mode 😅 What are you working on?';
+ if(/joke|funny|laugh/.test(lower)) return 'Okay 😂 I’m ready. Let’s see what you’ve got.';
+ const list=replies[vibe]||replies['Playful & flirty'];
+ return list[Math.floor(Math.random()*list.length)];
 }
 
 async function getAIReply(text){
@@ -282,7 +313,11 @@ async function sendMessage(text){
  }
  addMessage(text,'sent');chatInput.value='';
  const typing=document.createElement('div');typing.className='chat-bubble received typing';typing.textContent=partner.name+' is typing…';chatMessages.appendChild(typing);chatMessages.scrollTop=chatMessages.scrollHeight;
- const reply=await getAIReply(text);typing.remove();
+ const startedAt=Date.now();
+ const reply=await getAIReply(text);
+ const remaining=Math.max(0,humanReplyDelay(text)-(Date.now()-startedAt));
+ if(remaining) await sleep(remaining);
+ typing.remove();
  if(chatMode==='mystery' && realtimeMatchId) return;
  addMessage(reply);
 }
