@@ -90,6 +90,7 @@ async function tryClaim(candidateId, partnerRole, opts) {
     partnerRoleA: candidate.partnerRole,
     partnerRoleB: partnerRole,
     status: "active",
+    contextOwner: candidateId,
     createdAt: serverTimestamp()
   });
 
@@ -105,7 +106,8 @@ async function tryClaim(candidateId, partnerRole, opts) {
     matchedWith: uid
   });
 
-  if (opts?.onMatched) opts.onMatched({ id: matchId });
+  // Both participants connect through their queue listener below. Avoid an
+  // early callback here so match metadata and context ownership are available.
   return true;
 }
 
@@ -148,7 +150,11 @@ async function connectMatch(matchId, opts) {
     }
 
     activeMatchId = matchId;
-    if (opts.onMatched) opts.onMatched({ id: matchId, createdAt: match.createdAt });
+    if (opts.onMatched) opts.onMatched({
+      id: matchId,
+      createdAt: match.createdAt,
+      contextOwner: match.contextOwner === uid
+    });
 
     status(opts.setStatus, "Mystery connection active");
 
