@@ -26,6 +26,7 @@ let queueListener = null;
 let ownQueueListener = null;
 let messagesListener = null;
 let revealListener = null;
+let matchListener = null;
 let activeMatchId = null;
 let activePartnerRole = null;
 let leaving = false;
@@ -45,7 +46,7 @@ function oppositeRole(role) {
   return role === "Fake Girlfriend" ? "Fake Boyfriend" : "Fake Girlfriend";
 }
 
-async function publishQueue(partnerRole, context) {
+async function publishQueue(partnerRole) {
   const lookingFor = oppositeRole(partnerRole);
   queueRef = ref(db, "mysteryQueue/" + uid);
 
@@ -53,7 +54,6 @@ async function publishQueue(partnerRole, context) {
     status: "waiting",
     partnerRole,
     lookingFor,
-    context: Array.isArray(context) ? context.slice(-40) : [],
     joinedAt: serverTimestamp()
   });
 
@@ -90,7 +90,6 @@ async function tryClaim(candidateId, partnerRole, opts) {
     partnerRoleA: candidate.partnerRole,
     partnerRoleB: partnerRole,
     status: "active",
-    context: Array.isArray(candidate.context) ? candidate.context.slice(-40) : [],
     createdAt: serverTimestamp()
   });
 
@@ -153,13 +152,21 @@ async function connectMatch(matchId, opts) {
 
     status(opts.setStatus, "Mystery connection active");
 
-    // Show the conversation that happened with the AI before this human joined.
-    // This gives the new participant enough context to continue naturally.
-    if (Array.isArray(match.context) && match.context.length && opts.onContext) {
-      opts.onContext(match.context);
-    }
-
     watchRevealRequests(matchId, opts);
+
+    // If either browser disconnects unexpectedly, remove the temporary
+    // match/chat data. The other participant is notified by this listener.
+    const matchRef = ref(db, "mysteryMatches/" + matchId);
+    if (matchListener) matchListener();
+    matchListener = onValue(matchRef, snapshot => {
+      const value = snapshot.val();
+      if (!value || value.status === "ended") {
+        if (activeMatchId === matchId && opts?.onDisconnected) {
+          opts.onDisconnected();
+        }
+      }
+    });
+    onDisconnect(matchRef).remove();
 
     const messagesRef = ref(db, "mysteryChats/" + matchId + "/messages");
 
@@ -194,7 +201,7 @@ async function start(opts) {
     await ensureAuth();
 
     activePartnerRole = opts.partner.role;
-    const lookingFor = await publishQueue(activePartnerRole, opts.history);
+    const lookingFor = await publishQueue(activePartnerRole);
 
     status(opts.setStatus, "Searching for " + lookingFor + "…");
 
@@ -234,13 +241,6 @@ async function start(opts) {
     console.error("FakePair realtime error:", error);
     status(opts.setStatus, "Realtime connection error: " + (error?.message || "Check Firebase setup"));
   }
-}
-
-async function updateContext(context) {
-  if (!uid || !Array.isArray(context) || activeMatchId) return false;
-  const currentQueueRef = ref(db, "mysteryQueue/" + uid);
-  await update(currentQueueRef, { context: context.slice(-40) });
-  return true;
 }
 
 async function send(text) {
@@ -330,14 +330,27 @@ async function leave() {
     revealListener();
     revealListener = null;
   }
+  if (matchListener) {
+    matchListener();
+    matchListener = null;
+  }
+
+  const matchIdToDelete = activeMatchId;
 
   if (queueRef) {
     await remove(queueRef).catch(() => {});
     queueRef = null;
   }
 
+  // Mystery chats are ephemeral: remove the entire match and its messages
+  // as soon as either participant leaves.
+  if (matchIdToDelete) {
+    await remove(ref(db, "mysteryChats/" + matchIdToDelete)).catch(() => {});
+    await remove(ref(db, "mysteryMatches/" + matchIdToDelete)).catch(() => {});
+  }
+
   activeMatchId = null;
 }
 
-window.FakePairRealtime = { start, send, leave, requestReveal, respondReveal, updateContext };
+window.FakePairRealtime = { start, send, leave, requestReveal, respondReveal };
 __fakePairRealtimeResolve(window.FakePairRealtime);
