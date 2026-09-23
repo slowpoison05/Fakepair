@@ -37,22 +37,37 @@ function addMessage(text,type='received',save=true){
 
 function showPreviousAIContext(context){
  if(!Array.isArray(context) || !context.length) return;
- chatMessages.innerHTML='';
 
- const divider=document.createElement('div');
- divider.className='mystery-context-divider';
- divider.textContent='Conversation so far';
- chatMessages.appendChild(divider);
+ // Never clear the receiving user's existing chat. The transferred AI
+ // conversation is merged into the current transcript so the handoff feels
+ // continuous and the previous messages remain available for context.
+ const existing=Array.from(chatMessages.querySelectorAll('.chat-bubble'))
+  .map(el=>({role:el.classList.contains('sent')?'user':'assistant',content:el.textContent||''}))
+  .filter(item=>item.content);
 
- context.forEach(item=>{
+ const combined=[...context,...existing];
+ const seen=new Set();
+ const merged=[];
+ combined.forEach(item=>{
   if(!item || !item.content) return;
+  const key=item.role+'\\u0000'+item.content;
+  if(seen.has(key)) return;
+  seen.add(key);
+  merged.push({role:item.role,content:item.content});
+ });
+
+ chatMessages.innerHTML='';
+ merged.slice(-40).forEach(item=>{
   const el=document.createElement('div');
-  el.className='chat-bubble '+(item.role==='user'?'context-user':'context-ai');
+  el.className='chat-bubble '+(item.role==='user'?'sent':'received');
   el.textContent=item.content;
   chatMessages.appendChild(el);
  });
  chatMessages.scrollTop=chatMessages.scrollHeight;
- history=context.slice(-40).map(item=>({role:item.role,content:item.content}));
+
+ // Keep the transferred context as the active conversation history so the
+ // human participant can continue naturally from what the AI was discussing.
+ history=merged.slice(-40);
 }
 
 function formatClock(ms){
