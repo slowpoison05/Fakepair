@@ -154,9 +154,10 @@ async function connectMatch(matchId, opts) {
 
     watchRevealRequests(matchId, opts);
 
-    // If either browser disconnects unexpectedly, remove the temporary
-    // match/chat data. The other participant is notified by this listener.
+    // The match is temporary. The AI context is written only after matching,
+    // never continuously into the waiting queue.
     const matchRef = ref(db, "mysteryMatches/" + matchId);
+    let contextDelivered = false;
     if (matchListener) matchListener();
     matchListener = onValue(matchRef, snapshot => {
       const value = snapshot.val();
@@ -164,6 +165,11 @@ async function connectMatch(matchId, opts) {
         if (activeMatchId === matchId && opts?.onDisconnected) {
           opts.onDisconnected();
         }
+        return;
+      }
+      if (!contextDelivered && Array.isArray(value.context) && value.context.length && opts?.onContext) {
+        contextDelivered = true;
+        opts.onContext(value.context);
       }
     });
     onDisconnect(matchRef).remove();
@@ -241,6 +247,21 @@ async function start(opts) {
     console.error("FakePair realtime error:", error);
     status(opts.setStatus, "Realtime connection error: " + (error?.message || "Check Firebase setup"));
   }
+}
+
+async function publishMatchContext(matchId, context) {
+  if (!uid || !matchId || !Array.isArray(context)) return false;
+  const matchRef = ref(db, "mysteryMatches/" + matchId);
+  const snap = await get(matchRef);
+  const match = snap.val();
+  if (!match || match.status !== "active" || (match.userA !== uid && match.userB !== uid)) {
+    return false;
+  }
+  await update(matchRef, {
+    context: context.slice(-40),
+    contextCreatedAt: serverTimestamp()
+  });
+  return true;
 }
 
 async function send(text) {
@@ -352,5 +373,5 @@ async function leave() {
   activeMatchId = null;
 }
 
-window.FakePairRealtime = { start, send, leave, requestReveal, respondReveal };
+window.FakePairRealtime = { start, send, leave, requestReveal, respondReveal, publishMatchContext };
 __fakePairRealtimeResolve(window.FakePairRealtime);
