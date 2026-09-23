@@ -207,8 +207,9 @@ async function startRealtimeMatching(){
    document.getElementById('mysteryStatus').textContent='Mystery Mode · active';
    startRevealCycle(Number(match.createdAt)||Date.now());
 
-   // Transfer the AI conversation only once a human match exists.
-   if(window.FakePairRealtime?.publishMatchContext){
+   // Only the participant who was chatting with the AI publishes that
+   // conversation context. This prevents the other side from overwriting it.
+   if(match.contextOwner && window.FakePairRealtime?.publishMatchContext){
     window.FakePairRealtime.publishMatchContext(match.id, history.slice(-40))
       .catch(e=>console.error('Context transfer failed:',e));
    }
