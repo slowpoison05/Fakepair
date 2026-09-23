@@ -106,8 +106,9 @@ async function tryClaim(candidateId, partnerRole, opts) {
     matchedWith: uid
   });
 
-  // Both participants connect through their queue listener below. Avoid an
-  // early callback here so match metadata and context ownership are available.
+  // Connect the claimant immediately after the match is fully created.
+  // The candidate will connect through its own queue listener.
+  await connectMatch(matchId, opts);
   return true;
 }
 
