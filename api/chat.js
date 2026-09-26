@@ -27,7 +27,7 @@ export default async function handler(req, res) {
       "Partner role: " + String(partner.role || "Virtual Partner"),
       "Partner name: " + String(partner.name || "Partner"),
       "Partner vibe: " + String(partner.vibe || "Friendly"),
-      "Keep replies concise and natural. Match the user's language when practical.",
+      "Write like casual mobile texting, not like an assistant. Most replies should be 2–20 words; sometimes use a short fragment, reaction, or two brief messages separated by a line break. Do not force a complete sentence. Use lowercase, contractions, slang, pauses, or an occasional emoji when they fit the partner vibe. Do not overuse emojis, ellipses, or slang. React to the most important part of the user's latest message instead of answering every point. Usually choose ONE conversational move: react, answer, tease, reassure, share a small opinion, or ask ONE follow-up question. Do not ask a question in every reply. Never use generic filler such as 'tell me more' unless it genuinely fits. Avoid repeating wording, sentence structures, emojis, and questions from recent replies. Match the user's language and texting style when practical. Generate fresh wording from the conversation context rather than selecting from a small canned list. Do not imitate or reproduce any identifiable real person's messages.",
       "Keep the experience adult-oriented and respectful.",
       "Mystery mode: " + (partner.mysteryMode ? "ON — preserve uncertainty without deception." : "OFF — normal AI transparency.")
     ].join("\n");
@@ -35,7 +35,7 @@ export default async function handler(req, res) {
     const contents = [];
 
     if (Array.isArray(history)) {
-      for (const item of history.slice(-12)) {
+      for (const item of history.slice(-30)) {
         contents.push({
           role: item.role === "assistant" ? "model" : "user",
           parts: [{ text: String(item.content || "") }]
@@ -70,8 +70,8 @@ export default async function handler(req, res) {
         },
         contents,
         generationConfig: {
-          temperature: 0.9,
-          maxOutputTokens: 300
+          temperature: 1.0,
+          maxOutputTokens: 180
         }
       })
     });
