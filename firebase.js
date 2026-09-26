@@ -71,29 +71,39 @@ async function publishQueue(partnerRole) {
 }
 
 async function tryClaim(candidateId, partnerRole, opts) {
-  if (uid >= candidateId) return false;
+  // Only one side should claim a pair. Using the Firebase auth UIDs as a
+  // deterministic tie-breaker prevents both users from creating matches.
+  if (!uid || !candidateId || uid >= candidateId) return false;
 
   const candidateRef = ref(db, "mysteryQueue/" + candidateId);
   const matchId = push(ref(db, "mysteryMatches")).key;
+  if (!matchId) return false;
 
-  const tx = await runTransaction(candidateRef, current => {
-    if (!current || current.status !== "waiting") return;
-    if (current.lookingFor !== partnerRole) return;
+  let tx;
+  try {
+    tx = await runTransaction(candidateRef, current => {
+      if (!current || current.status !== "waiting") return;
+      if (current.lookingFor !== partnerRole) return;
+      if (current.partnerRole === partnerRole) return;
 
-    return {
-      ...current,
-      status: "matched",
-      matchId,
-      matchedBy: uid
-    };
-  });
+      return {
+        ...current,
+        status: "matched",
+        matchId,
+        matchedBy: uid
+      };
+    });
+  } catch (error) {
+    console.error("FakePair candidate claim transaction failed:", error);
+    return false;
+  }
 
   if (!tx.committed) return false;
 
   const candidate = tx.snapshot.val();
   if (!candidate || candidate.matchId !== matchId) return false;
 
-  await set(ref(db, "mysteryMatches/" + matchId), {
+  const matchData = {
     userA: candidateId,
     userB: uid,
     partnerRoleA: candidate.partnerRole,
@@ -101,26 +111,44 @@ async function tryClaim(candidateId, partnerRole, opts) {
     status: "active",
     contextOwner: candidateId,
     createdAt: serverTimestamp()
-  });
+  };
 
-  await update(ref(db, "mysteryQueue/" + uid), {
-    status: "matched",
-    matchId,
-    matchedWith: candidateId
-  });
+  try {
+    // Publish the match and both queue states in one atomic database update.
+    // This prevents either participant from seeing a matched queue entry
+    // before the corresponding match record exists.
+    await update(ref(db), {
+      ["mysteryMatches/" + matchId]: matchData,
+      ["mysteryQueue/" + uid + "/status"]: "matched",
+      ["mysteryQueue/" + uid + "/matchId"]: matchId,
+      ["mysteryQueue/" + uid + "/matchedWith"]: candidateId,
+      ["mysteryQueue/" + candidateId + "/status"]: "matched",
+      ["mysteryQueue/" + candidateId + "/matchId"]: matchId,
+      ["mysteryQueue/" + candidateId + "/matchedWith"]: uid
+    });
 
-  await update(ref(db, "mysteryQueue/" + candidateId), {
-    status: "matched",
-    matchId,
-    matchedWith: uid
-  });
+    console.info("FakePair match created:", matchId, uid, candidateId);
 
-  // Connect the claimant immediately after the match is fully created.
-  // The candidate will connect through its own queue listener.
-  await connectMatch(matchId, opts);
-  return true;
+    // The claimant connects immediately. The other participant connects
+    // from its own queue listener.
+    await connectMatch(matchId, opts);
+    return true;
+  } catch (error) {
+    console.error("FakePair match creation failed:", error);
+
+    // Return the candidate to waiting if the atomic match publication failed.
+    await set(candidateRef, {
+      ...candidate,
+      status: "waiting",
+      matchId: null,
+      matchedBy: null
+    }).catch(resetError => {
+      console.error("FakePair queue rollback failed:", resetError);
+    });
+
+    return false;
+  }
 }
-
 function watchRevealRequests(matchId, opts) {
   const requestsRef = ref(db, "mysteryMatches/" + matchId + "/revealRequests");
 
