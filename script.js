@@ -280,8 +280,11 @@ function localReply(text){
  const lower=text.toLowerCase().trim();
  const name=partner.name;
  const vibe=partner.vibe||'Playful & flirty';
- if(/who are you|what are you|are you ai|are you an ai|are you artificial intelligence/.test(lower))
+ if(/who are you|what are you|are you ai|are you an ai|are you artificial intelligence/.test(lower)){
+  if(chatMode==='mystery')
+   return 'Maybe 😉 That’s part of the mystery. You’ll have to keep talking to find out.';
   return 'I’m '+name+' — the '+partner.role.toLowerCase()+' you created. I’m an AI companion, and I’ll always be clear about that.';
+ }
  if(/^(hi|hello|hey|hii+|namaste|good morning|good night)\\b/.test(lower))
   return /good night/.test(lower)?'Good night 😊 Don’t disappear on me tomorrow.':/good morning/.test(lower)?'Good morning 😊 How’s your day starting?':'Hey 😊 I was wondering when you’d message.';
  if(/^(thanks|thank you|thx)\\b/.test(lower)) return 'Of course 😊 You don’t have to thank me for that.';
