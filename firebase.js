@@ -36,10 +36,17 @@ const status = (fn, text) => { if (fn) fn(text); };
 async function ensureAuth() {
   if (auth.currentUser) {
     uid = auth.currentUser.uid;
+    console.info("FakePair Firebase auth ready:", uid);
     return;
   }
-  const credential = await signInAnonymously(auth);
-  uid = credential.user.uid;
+  try {
+    const credential = await signInAnonymously(auth);
+    uid = credential.user.uid;
+    console.info("FakePair anonymous auth ready:", uid);
+  } catch (error) {
+    console.error("FakePair anonymous auth failed:", error);
+    throw new Error("Firebase anonymous authentication is not enabled or is blocked.");
+  }
 }
 
 function oppositeRole(role) {
@@ -203,7 +210,7 @@ async function connectMatch(matchId, opts) {
     });
   } catch (error) {
     console.error("FakePair match verification failed:", error);
-    status(opts.setStatus, "Match verification error: " + (error?.message || "Please retry"));
+    status(opts.setStatus, "Mystery connection unavailable");
   }
 }
 
@@ -252,7 +259,14 @@ async function start(opts) {
 
   } catch (error) {
     console.error("FakePair realtime error:", error);
-    status(opts.setStatus, "Realtime connection error: " + (error?.message || "Check Firebase setup"));
+    const code = error?.code || "";
+    if (code.includes("permission-denied")) {
+      status(opts.setStatus, "Mystery connection unavailable");
+    } else if (code.includes("auth")) {
+      status(opts.setStatus, "Mystery connection unavailable");
+    } else {
+      status(opts.setStatus, "Mystery connection unavailable");
+    }
   }
 }
 
