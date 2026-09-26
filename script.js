@@ -307,7 +307,7 @@ function localReply(text){
 
 async function getAIReply(text){
  try{
-  const endpoint=location.hostname.endsWith('.vercel.app')?'/api/chat':'api/chat.php';
+  const endpoint='/api/chat';
   const res=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text,partner:{...partner,mysteryMode:chatMode==='mystery'},history})});
   const data=await res.json().catch(()=>({}));
   if(res.ok && data.reply)return data.reply;
