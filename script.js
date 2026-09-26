@@ -19,6 +19,7 @@ let revealCountdownTimer=null;
 let revealRequestPending=false;
 let revealUnlocked=false;
 let mysteryStartedAt=0;
+let learningOptIn=false;
 
 
 const replies={
@@ -339,6 +340,15 @@ async function sendMessage(text){
  typing.remove();
  if(chatMode==='mystery' && realtimeMatchId) return;
  addMessage(reply);
+ if(learningOptIn && window.FakePairRealtime?.submitLearningExample){
+  window.FakePairRealtime.submitLearningExample({
+   userText:text,
+   reply,
+   partnerRole:partner.role,
+   vibe:partner.vibe,
+   mode:chatMode
+  }).catch(e=>console.error('Learning example submission failed:',e));
+ }
 }
 
 document.querySelectorAll('[data-open]').forEach(btn=>btn.addEventListener('click',()=>btn.dataset.open==='create'?createModal.showModal():mysteryModal.showModal()));
@@ -348,11 +358,19 @@ document.querySelectorAll('.choice').forEach(btn=>btn.addEventListener('click',(
 document.getElementById('startDemo').addEventListener('click',()=>{
  const isGirl=document.querySelector('.choice.active').dataset.role==='girlfriend';
  partner={name:document.getElementById('partnerName').value.trim()||(isGirl?'Maya':'Arjun'),role:isGirl?'Fake Girlfriend':'Fake Boyfriend',vibe:document.getElementById('partnerVibe').value};
+ learningOptIn=Boolean(document.getElementById('learningConsent')?.checked);
+ localStorage.setItem('fakepair_learning_opt_in',learningOptIn?'1':'0');
  createModal.close();startChat();
 });
 
 chatForm.addEventListener('submit',e=>{e.preventDefault();const text=chatInput.value.trim();if(text)sendMessage(text);});
 document.getElementById('backHome').addEventListener('click',leaveChat);
+const savedLearningOptIn=localStorage.getItem('fakepair_learning_opt_in');
+if(savedLearningOptIn==='1'){
+ const consent=document.getElementById('learningConsent');
+ if(consent) consent.checked=true;
+ learningOptIn=true;
+}
 revealBtn.addEventListener('click',requestIdentityReveal);
 document.getElementById('closeRevealResponse').addEventListener('click',()=>revealResponseModal.close());
 document.getElementById('keepMysteryBtn').addEventListener('click',()=>respondToReveal(false));
