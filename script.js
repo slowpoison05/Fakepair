@@ -356,9 +356,15 @@ document.querySelectorAll('[data-close]').forEach(btn=>btn.addEventListener('cli
 document.querySelectorAll('.choice').forEach(btn=>btn.addEventListener('click',()=>{document.querySelectorAll('.choice').forEach(x=>x.classList.remove('active'));btn.classList.add('active');}));
 
 document.getElementById('startDemo').addEventListener('click',()=>{
+ const consent=document.getElementById('learningConsent');
+ if(!consent?.checked){
+  consent?.focus();
+  consent?.scrollIntoView({behavior:'smooth',block:'center'});
+  return;
+ }
  const isGirl=document.querySelector('.choice.active').dataset.role==='girlfriend';
  partner={name:document.getElementById('partnerName').value.trim()||(isGirl?'Maya':'Arjun'),role:isGirl?'Fake Girlfriend':'Fake Boyfriend',vibe:document.getElementById('partnerVibe').value};
- learningOptIn=Boolean(document.getElementById('learningConsent')?.checked);
+ learningOptIn=true;
  localStorage.setItem('fakepair_learning_opt_in',learningOptIn?'1':'0');
  createModal.close();startChat();
 });
