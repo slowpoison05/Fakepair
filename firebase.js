@@ -271,6 +271,31 @@ async function publishMatchContext(matchId, context) {
   return true;
 }
 
+async function submitLearningExample(example) {
+  if (!uid || !example || !example.userText || !example.reply) return false;
+  const clean = value => String(value || "")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, "[email]")
+    .replace(/https?:\\/\\/\\S+/gi, "[link]")
+    .replace(/\\b(?:\\+?91[- .]?)?[6-9]\\d{9}\\b/g, "[phone]")
+    .slice(0, 500);
+  try {
+    const exampleRef = push(ref(db, "learningExamples/" + uid));
+    await set(exampleRef, {
+      userText: clean(example.userText),
+      reply: clean(example.reply),
+      partnerRole: String(example.partnerRole || ""),
+      vibe: String(example.vibe || ""),
+      mode: String(example.mode || "ai"),
+      consentVersion: "2026-09-26-v1",
+      createdAt: serverTimestamp()
+    });
+    return true;
+  } catch (error) {
+    console.error("FakePair learning example failed:", error);
+    return false;
+  }
+}
+
 async function send(text) {
   if (!activeMatchId || !uid) return false;
 
@@ -380,5 +405,5 @@ async function leave() {
   activeMatchId = null;
 }
 
-window.FakePairRealtime = { start, send, leave, requestReveal, respondReveal, publishMatchContext };
+window.FakePairRealtime = { start, send, leave, requestReveal, respondReveal, publishMatchContext, submitLearningExample };
 __fakePairRealtimeResolve(window.FakePairRealtime);
