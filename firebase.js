@@ -57,6 +57,7 @@ async function publishQueue(partnerRole) {
   const lookingFor = oppositeRole(partnerRole);
   queueRef = ref(db, "mysteryQueue/" + uid);
 
+  console.info("FakePair queue publish:", uid, "lookingFor:", lookingFor);
   await set(queueRef, {
     status: "waiting",
     partnerRole,
@@ -64,7 +65,8 @@ async function publishQueue(partnerRole) {
     joinedAt: serverTimestamp()
   });
 
-  onDisconnect(queueRef).remove();
+  await onDisconnect(queueRef).remove();
+  console.info("FakePair queue published successfully:", uid);
   return lookingFor;
 }
 
@@ -227,35 +229,58 @@ async function start(opts) {
 
     if (queueListener) queueListener();
 
-    queueListener = onValue(ref(db, "mysteryQueue"), async snapshot => {
-      if (leaving || activeMatchId) return;
+    queueListener = onValue(
+      ref(db, "mysteryQueue"),
+      async snapshot => {
+        if (leaving || activeMatchId) return;
 
-      const candidates = [];
-      snapshot.forEach(child => {
-        const value = child.val();
-        if (
-          child.key !== uid &&
-          value &&
-          value.status === "waiting" &&
-          value.lookingFor === activePartnerRole
-        ) {
-          candidates.push({ id: child.key, joinedAt: value.joinedAt || 0 });
+        console.info("FakePair queue update received. Users:", snapshot.size);
+
+        const candidates = [];
+        snapshot.forEach(child => {
+          const value = child.val();
+          if (
+            child.key !== uid &&
+            value &&
+            value.status === "waiting" &&
+            value.lookingFor === activePartnerRole
+          ) {
+            candidates.push({ id: child.key, joinedAt: value.joinedAt || 0 });
+          }
+        });
+
+        candidates.sort((a, b) => Number(a.joinedAt) - Number(b.joinedAt));
+
+        console.info("FakePair compatible candidates:", candidates.length);
+
+        for (const candidate of candidates) {
+          try {
+            if (await tryClaim(candidate.id, activePartnerRole, opts)) break;
+          } catch (error) {
+            console.error("FakePair match claim failed:", error);
+          }
         }
-      });
-
-      candidates.sort((a, b) => Number(a.joinedAt) - Number(b.joinedAt));
-
-      for (const candidate of candidates) {
-        if (await tryClaim(candidate.id, activePartnerRole, opts)) break;
+      },
+      error => {
+        console.error("FakePair queue listener failed:", error);
+        status(opts.setStatus, "Mystery connection unavailable");
       }
-    });
+    );
 
     if (ownQueueListener) ownQueueListener();
-    ownQueueListener = onValue(ref(db, "mysteryQueue/" + uid), snapshot => {
-      const value = snapshot.val();
-      if (!value?.matchId || activeMatchId) return;
-      connectMatch(value.matchId, opts);
-    });
+    ownQueueListener = onValue(
+      ref(db, "mysteryQueue/" + uid),
+      snapshot => {
+        const value = snapshot.val();
+        console.info("FakePair own queue state:", value);
+        if (!value?.matchId || activeMatchId) return;
+        connectMatch(value.matchId, opts);
+      },
+      error => {
+        console.error("FakePair own queue listener failed:", error);
+        status(opts.setStatus, "Mystery connection unavailable");
+      }
+    );
 
   } catch (error) {
     console.error("FakePair realtime error:", error);
