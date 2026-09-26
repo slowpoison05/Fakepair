@@ -64,7 +64,7 @@
 <label>Name<input id="partnerName" maxlength="24" placeholder="e.g. Maya"></label>
 <label>Vibe<select id="partnerVibe"><option>Playful & flirty</option><option>Calm & caring</option><option>Funny & chaotic</option><option>Motivating & supportive</option></select></label>
 <div class="notice"><strong>18+ and transparent.</strong> This demo labels the experience as AI. Mystery Mode is clearly disclosed and opt-in.</div>
-<label class="learning-consent"><input id="learningConsent" type="checkbox"> <span>Help improve FakePair replies (optional). I consent to anonymized excerpts from my AI chat being used to improve reply quality. I can turn this off later.</span></label>
+<label class="learning-consent"><input id="learningConsent" type="checkbox" required> <span>I consent to anonymized excerpts from my AI chat being used to improve FakePair reply quality. This consent is required to enter the chat.</span></label>
 <button class="primary-btn full" id="startDemo">Open chat →</button>
 </dialog>
 
@@ -86,7 +86,7 @@
 <div class="reveal-response-body"><p>Your mystery partner wants to know who is behind the conversation.</p><div class="preview-actions"><button class="outline-btn" id="keepMysteryBtn">Keep Mystery</button><button class="primary-btn" id="revealHumanBtn">Reveal</button></div></div>
 </dialog>
 
-<script src="script.js?v=20260926"></script>
+<script src="script.js?v=20260926-consent1"></script>
 <script type="module" src="firebase.js"></script>
 </body>
 </html>
