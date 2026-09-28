@@ -27,6 +27,8 @@ let ownQueueListener = null;
 let messagesListener = null;
 let revealListener = null;
 let matchListener = null;
+let queuePollTimer = null;
+let matchingInFlight = false;
 let activeMatchId = null;
 let activePartnerRole = null;
 let leaving = false;
@@ -237,6 +239,7 @@ async function connectMatch(matchId, opts) {
 
 async function start(opts) {
   leaving = false;
+  matchingInFlight = false;
 
   try {
     await ensureAuth();
@@ -244,47 +247,74 @@ async function start(opts) {
     activePartnerRole = opts.partner.role;
     const lookingFor = await publishQueue(activePartnerRole);
 
+    // Keep the UI neutral. Matching details stay in the console only.
     status(opts.setStatus, "Searching for " + lookingFor + "…");
 
-    if (queueListener) queueListener();
+    const scanQueue = async snapshot => {
+      if (leaving || activeMatchId || matchingInFlight) return;
 
+      const candidates = [];
+      snapshot.forEach(child => {
+        const value = child.val();
+        if (
+          child.key !== uid &&
+          value &&
+          value.status === "waiting" &&
+          value.partnerRole &&
+          value.partnerRole !== activePartnerRole &&
+          value.lookingFor === activePartnerRole
+        ) {
+          candidates.push({
+            id: child.key,
+            joinedAt: Number(value.joinedAt || 0)
+          });
+        }
+      });
+
+      candidates.sort((a, b) => a.joinedAt - b.joinedAt);
+      console.info("FakePair compatible candidates:", candidates.length, candidates);
+
+      for (const candidate of candidates) {
+        if (leaving || activeMatchId) return;
+        matchingInFlight = true;
+        try {
+          const connected = await tryClaim(candidate.id, activePartnerRole, opts);
+          if (connected) return;
+        } catch (error) {
+          console.error("FakePair match claim failed:", error);
+        } finally {
+          matchingInFlight = false;
+        }
+      }
+    };
+
+    if (queueListener) queueListener();
     queueListener = onValue(
       ref(db, "mysteryQueue"),
-      async snapshot => {
-        if (leaving || activeMatchId) return;
-
-        console.info("FakePair queue update received. Users:", snapshot.size);
-
-        const candidates = [];
-        snapshot.forEach(child => {
-          const value = child.val();
-          if (
-            child.key !== uid &&
-            value &&
-            value.status === "waiting" &&
-            value.lookingFor === activePartnerRole
-          ) {
-            candidates.push({ id: child.key, joinedAt: value.joinedAt || 0 });
-          }
-        });
-
-        candidates.sort((a, b) => Number(a.joinedAt) - Number(b.joinedAt));
-
-        console.info("FakePair compatible candidates:", candidates.length);
-
-        for (const candidate of candidates) {
-          try {
-            if (await tryClaim(candidate.id, activePartnerRole, opts)) break;
-          } catch (error) {
-            console.error("FakePair match claim failed:", error);
-          }
-        }
+      snapshot => {
+        console.info("FakePair queue listener fired");
+        scanQueue(snapshot).catch(error => console.error("FakePair queue scan failed:", error));
       },
       error => {
         console.error("FakePair queue listener failed:", error);
-        status(opts.setStatus, "Mystery connection unavailable");
+        // Do not replace the neutral Mystery UI with a backend error.
       }
     );
+
+    // Polling is an intentional fallback for mobile/browser cases where the
+    // realtime listener is delayed or interrupted. It also makes matching
+    // recover automatically without requiring a page refresh.
+    if (queuePollTimer) clearInterval(queuePollTimer);
+    queuePollTimer = setInterval(async () => {
+      if (leaving || activeMatchId) return;
+      try {
+        const snapshot = await get(ref(db, "mysteryQueue"));
+        console.info("FakePair queue poll");
+        await scanQueue(snapshot);
+      } catch (error) {
+        console.error("FakePair queue poll failed:", error);
+      }
+    }, 1500);
 
     if (ownQueueListener) ownQueueListener();
     ownQueueListener = onValue(
@@ -297,20 +327,17 @@ async function start(opts) {
       },
       error => {
         console.error("FakePair own queue listener failed:", error);
-        status(opts.setStatus, "Mystery connection unavailable");
       }
     );
 
+    // One immediate read removes the need to wait for either listener or poll.
+    const initialQueue = await get(ref(db, "mysteryQueue"));
+    await scanQueue(initialQueue);
+
   } catch (error) {
     console.error("FakePair realtime error:", error);
-    const code = error?.code || "";
-    if (code.includes("permission-denied")) {
-      status(opts.setStatus, "Mystery connection unavailable");
-    } else if (code.includes("auth")) {
-      status(opts.setStatus, "Mystery connection unavailable");
-    } else {
-      status(opts.setStatus, "Mystery connection unavailable");
-    }
+    // Keep Mystery Mode usable even if realtime matching is unavailable.
+    status(opts.setStatus, "Searching for " + (lookingFor || "a partner") + "…");
   }
 }
 
@@ -429,6 +456,11 @@ async function leave() {
     queueListener();
     queueListener = null;
   }
+  if (queuePollTimer) {
+    clearInterval(queuePollTimer);
+    queuePollTimer = null;
+  }
+  matchingInFlight = false;
   if (ownQueueListener) {
     ownQueueListener();
     ownQueueListener = null;
