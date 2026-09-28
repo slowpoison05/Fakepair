@@ -71,9 +71,10 @@ async function publishQueue(partnerRole) {
 }
 
 async function tryClaim(candidateId, partnerRole, opts) {
-  // Only one side should claim a pair. Using the Firebase auth UIDs as a
-  // deterministic tie-breaker prevents both users from creating matches.
-  if (!uid || !candidateId || uid >= candidateId) return false;
+  // Both compatible users may attempt the claim. Firebase's transaction
+  // atomically allows only one claimant to change the candidate from waiting
+  // to matched, so no UID ordering/tie-breaker is needed.
+  if (!uid || !candidateId || uid === candidateId) return false;
 
   const candidateRef = ref(db, "mysteryQueue/" + candidateId);
   const matchId = push(ref(db, "mysteryMatches")).key;
