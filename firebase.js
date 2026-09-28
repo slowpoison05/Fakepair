@@ -1,9 +1,27 @@
 let __fakePairRealtimeResolve;
 let __fakePairRealtimeReject;
 window.FakePairRealtimeReady = new Promise((resolve,reject)=>{__fakePairRealtimeResolve=resolve;__fakePairRealtimeReject=reject;});
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
-import { getDatabase, ref, set, update, onValue, onDisconnect, runTransaction, push, serverTimestamp, remove, get } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js";
+
+let initializeApp, getAuth, signInAnonymously;
+let getDatabase, ref, set, update, onValue, onDisconnect, runTransaction, push, serverTimestamp, remove, get;
+
+const firebaseInitPromise = (async () => {
+  try {
+    const [appMod, authMod, dbMod] = await Promise.all([
+      import("https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js"),
+      import("https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js"),
+      import("https://www.gstatic.com/firebasejs/12.1.0/firebase-database.js")
+    ]);
+    ({ initializeApp } = appMod);
+    ({ getAuth, signInAnonymously } = authMod);
+    ({ getDatabase, ref, set, update, onValue, onDisconnect, runTransaction, push, serverTimestamp, remove, get } = dbMod);
+    console.info("FakePair Firebase SDK loaded");
+  } catch (error) {
+    console.error("FakePair Firebase SDK load failed:", error);
+    __fakePairRealtimeReject(error);
+    throw error;
+  }
+})();
 
 const firebaseConfig = {
   apiKey: "AIzaSyDvdT2J831GjXtzqApPqYguOLaGLHzW-Ho",
@@ -16,9 +34,18 @@ const firebaseConfig = {
   measurementId: "G-C66P0NC61V"
 };
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getDatabase(app);
+let app = null;
+let auth = null;
+let db = null;
+
+async function initializeFirebase() {
+  await firebaseInitPromise;
+  if (app) return;
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getDatabase(app);
+  console.info("FakePair Firebase initialized");
+}
 
 let uid = null;
 let queueRef = null;
@@ -239,6 +266,7 @@ async function connectMatch(matchId, opts) {
 
 async function start(opts) {
   leaving = false;
+  await initializeFirebase();
   matchingInFlight = false;
 
   try {
@@ -342,6 +370,7 @@ async function start(opts) {
 }
 
 async function publishMatchContext(matchId, context) {
+  await initializeFirebase();
   if (!uid || !matchId || !Array.isArray(context)) return false;
   const matchRef = ref(db, "mysteryMatches/" + matchId);
   const snap = await get(matchRef);
@@ -357,6 +386,7 @@ async function publishMatchContext(matchId, context) {
 }
 
 async function submitLearningExample(example) {
+  await initializeFirebase();
   if (!uid || !example || !example.userText || !example.reply) return false;
   const clean = value => String(value || "")
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}/gi, "[email]")
@@ -382,6 +412,7 @@ async function submitLearningExample(example) {
 }
 
 async function send(text) {
+  await initializeFirebase();
   if (!activeMatchId || !uid) return false;
 
   const matchSnap = await get(ref(db, "mysteryMatches/" + activeMatchId));
@@ -413,6 +444,7 @@ async function send(text) {
 }
 
 async function requestReveal() {
+  await initializeFirebase();
   if (!activeMatchId || !uid) return { mode: "none" };
 
   const matchSnap = await get(ref(db, "mysteryMatches/" + activeMatchId));
@@ -433,6 +465,7 @@ async function requestReveal() {
 }
 
 async function respondReveal(requestId, reveal) {
+  await initializeFirebase();
   if (!activeMatchId || !requestId || !uid) return false;
 
   const requestRef = ref(db, "mysteryMatches/" + activeMatchId + "/revealRequests/" + requestId);
@@ -450,6 +483,7 @@ async function respondReveal(requestId, reveal) {
 }
 
 async function leave() {
+  try { await initializeFirebase(); } catch (_) {}
   leaving = true;
 
   if (queueListener) {
@@ -496,4 +530,6 @@ async function leave() {
 }
 
 window.FakePairRealtime = { start, send, leave, requestReveal, respondReveal, publishMatchContext, submitLearningExample };
-__fakePairRealtimeResolve(window.FakePairRealtime);
+firebaseInitPromise
+  .then(() => __fakePairRealtimeResolve(window.FakePairRealtime))
+  .catch(error => console.error("FakePair realtime initialization failed:", error));
