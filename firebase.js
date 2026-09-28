@@ -71,55 +71,59 @@ async function publishQueue(partnerRole) {
 }
 
 async function tryClaim(candidateId, partnerRole, opts) {
-  // Both compatible users may attempt the claim. Firebase's transaction
-  // atomically allows only one claimant to change the candidate from waiting
-  // to matched, so no UID ordering/tie-breaker is needed.
   if (!uid || !candidateId || uid === candidateId) return false;
 
-  const candidateRef = ref(db, "mysteryQueue/" + candidateId);
-  const matchId = push(ref(db, "mysteryMatches")).key;
-  if (!matchId) return false;
+  // Use one deterministic match record for this exact pair. Both users can
+  // attempt the same transaction; Firebase serializes it, so only one active
+  // match record exists for the pair.
+  const matchId = [uid, candidateId].sort().join("__");
+  const matchRef = ref(db, "mysteryMatches/" + matchId);
 
-  let tx;
-  try {
-    tx = await runTransaction(candidateRef, current => {
-      if (!current || current.status !== "waiting") return;
-      if (current.lookingFor !== partnerRole) return;
-      if (current.partnerRole === partnerRole) return;
-
-      return {
-        ...current,
-        status: "matched",
-        matchId,
-        matchedBy: uid
-      };
-    });
-  } catch (error) {
-    console.error("FakePair candidate claim transaction failed:", error);
-    return false;
-  }
-
-  if (!tx.committed) return false;
-
-  const candidate = tx.snapshot.val();
-  if (!candidate || candidate.matchId !== matchId) return false;
-
-  const matchData = {
+  const newMatch = {
     userA: candidateId,
     userB: uid,
-    partnerRoleA: candidate.partnerRole,
+    partnerRoleA: null,
     partnerRoleB: partnerRole,
     status: "active",
     contextOwner: candidateId,
     createdAt: serverTimestamp()
   };
 
+  let tx;
   try {
-    // Publish the match and both queue states in one atomic database update.
-    // This prevents either participant from seeing a matched queue entry
-    // before the corresponding match record exists.
+    tx = await runTransaction(matchRef, current => {
+      if (current && current.status === "active") return current;
+      return newMatch;
+    });
+  } catch (error) {
+    console.error("FakePair match-lock transaction failed:", error);
+    return false;
+  }
+
+  if (!tx.committed) return false;
+
+  const match = tx.snapshot.val();
+  if (!match || match.status !== "active") return false;
+
+  // Fill in the candidate's role and publish both queue states. This is
+  // deliberately separate from the lock transaction so a queue update cannot
+  // prevent the match itself from existing.
+  try {
+    const candidateSnap = await get(ref(db, "mysteryQueue/" + candidateId));
+    const candidate = candidateSnap.val();
+
+    if (!candidate ||
+        candidate.status !== "waiting" ||
+        candidate.lookingFor !== partnerRole ||
+        candidate.partnerRole === partnerRole) {
+      // If this pair became invalid while the transaction was running, do not
+      // connect to it.
+      return false;
+    }
+
     await update(ref(db), {
-      ["mysteryMatches/" + matchId]: matchData,
+      ["mysteryMatches/" + matchId + "/partnerRoleA"]: candidate.partnerRole,
+      ["mysteryMatches/" + matchId + "/partnerRoleB"]: partnerRole,
       ["mysteryQueue/" + uid + "/status"]: "matched",
       ["mysteryQueue/" + uid + "/matchId"]: matchId,
       ["mysteryQueue/" + uid + "/matchedWith"]: candidateId,
@@ -128,25 +132,11 @@ async function tryClaim(candidateId, partnerRole, opts) {
       ["mysteryQueue/" + candidateId + "/matchedWith"]: uid
     });
 
-    console.info("FakePair match created:", matchId, uid, candidateId);
-
-    // The claimant connects immediately. The other participant connects
-    // from its own queue listener.
+    console.info("FakePair deterministic match connected:", matchId);
     await connectMatch(matchId, opts);
     return true;
   } catch (error) {
-    console.error("FakePair match creation failed:", error);
-
-    // Return the candidate to waiting if the atomic match publication failed.
-    await set(candidateRef, {
-      ...candidate,
-      status: "waiting",
-      matchId: null,
-      matchedBy: null
-    }).catch(resetError => {
-      console.error("FakePair queue rollback failed:", resetError);
-    });
-
+    console.error("FakePair match connection update failed:", error);
     return false;
   }
 }
