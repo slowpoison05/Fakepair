@@ -266,14 +266,16 @@ async function connectMatch(matchId, opts) {
 
 async function start(opts) {
   leaving = false;
-  await initializeFirebase();
   matchingInFlight = false;
 
+  let lookingFor = "a partner";
+
   try {
+    await initializeFirebase();
     await ensureAuth();
 
     activePartnerRole = opts.partner.role;
-    const lookingFor = await publishQueue(activePartnerRole);
+    lookingFor = await publishQueue(activePartnerRole);
 
     // Keep the UI neutral. Matching details stay in the console only.
     status(opts.setStatus, "Searching for " + lookingFor + "…");
@@ -364,6 +366,10 @@ async function start(opts) {
 
   } catch (error) {
     console.error("FakePair realtime error:", error);
+    console.error("FakePair realtime error details:", {
+      code: error?.code || "",
+      message: error?.message || String(error)
+    });
     // Keep Mystery Mode usable even if realtime matching is unavailable.
     status(opts.setStatus, "Searching for " + (lookingFor || "a partner") + "…");
   }
